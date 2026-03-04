@@ -1,0 +1,36 @@
+# Data — never push CSVs or Excel files
+*.csv
+*.xlsx
+*.xls
+app/data/
+scripts/data/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# uv
+.uv/
+
+# Output / cache
+app/output/
+logs/*.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
