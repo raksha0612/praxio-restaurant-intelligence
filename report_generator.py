@@ -3,13 +3,10 @@ report_generator.py
 ====================
 Generates a rich 6-page Revenue Intelligence Brief PDF using reportlab + matplotlib.
 Restaurant version — adapted from praxiotech-intelligence-engine.
+Full EN/DE bilingual support across ALL text elements.
 """
 import io
 from datetime import datetime
-
-# Defer importing heavy plotting libraries (matplotlib, numpy) until they
-# are actually needed in the plotting helper functions. This prevents
-# import-time failures when these optional libraries are not installed.
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -58,18 +55,356 @@ STYLES = {
 }
 
 
+# ── Full bilingual text dictionary ────────────────────────────────────────────────
+_TEXT = {
+    "EN": {
+        # Header / footer
+        "header_left":  "RESTAURANT REVENUE INTELLIGENCE  |  PRAXIOTECH",
+        "header_right": "CONFIDENTIAL  ·  PAGE {pg} OF 6",
+        "footer_left":  "Generated: {date}  ·  Intelligence Engine v1.3  ·  Restaurant Audit",
+        "footer_right": "For Internal Sales Use Only  ·  © Praxiotech GmbH",
+        # Cover
+        "badge":        "INTELLIGENCE ENGINE ACTIVE v1.3",
+        "cover_line1":  "RESTAURANT",
+        "cover_line2":  "REVENUE",
+        "cover_line3":  "INTELLIGENCE",
+        "ranked_line":  "Ranked #{rank} of {total} Establishments",
+        "confidential": "Prepared exclusively for Praxiotech GmbH sales team · CONFIDENTIAL",
+        "kpi_health":   "HEALTH SCORE",
+        "kpi_rank":     "DISTRICT RANK",
+        "kpi_rating":   "STAR RATING",
+        "kpi_response": "RESPONSIVENESS",
+        # Exec summary
+        "exec_title":   "01 / Executive Summary",
+        "exec_body":    (
+            "This Revenue Intelligence Brief presents a comprehensive digital audit of <b>{res_name}</b>, "
+            "currently ranked <b>#{rank} of {total}</b> in the Praxiotech Intelligence Index. "
+            "The restaurant holds a <b>Digital Health Score of {health:.1f}/100</b>, "
+            "built on a {rating:.1f}-star Google rating across {rev_count:,} customer reviews. "
+            "While the establishment demonstrates strong guest satisfaction metrics, "
+            "this audit identifies critical optimization gaps — most notably in owner responsiveness "
+            "(<b>{res_rate:.0f}%</b> current vs. 90% industry best practice) — "
+            "that represent immediate, high-ROI opportunities for the Praxiotech platform."
+        ),
+        "primary_finding": "Primary Finding:",
+        "finding_body": (
+            "<b>Primary Finding:</b> The largest gap is in <b>{top_gap}</b> ({top_val:+.1f} pts vs. benchmark). "
+            "Closing this single gap via Praxiotech would move {res_name} into the <b>Top 3</b>."
+        ),
+        "perf_scorecard":       "Performance Scorecard",
+        "cust_persona_title":   "Customer Persona Intelligence",
+        "primary_persona_lbl":  "Primary Persona:",
+        "segment_lbl":          "Segment:",
+        "core_motivation_lbl":  "Core Motivation:",
+        # Scorecard status labels
+        "strength":    "STRENGTH",
+        "opportunity": "OPPORTUNITY",
+        "critical":    "CRITICAL",
+        # Scorecard headers
+        "sc_dimension": "Dimension",
+        "sc_weight":    "Weight",
+        "sc_score":     "Score /100",
+        "sc_benchmark": "Benchmark",
+        "sc_delta":     "Delta",
+        "sc_status":    "Status",
+        # Dimension page
+        "dim_title":  "02 / Dimension Deep-Dive Analysis",
+        "dim_intro":  (
+            "Each of the five performance dimensions is independently scored (0–100), weighted by business impact, "
+            "and benchmarked against the top 25th percentile of all establishments in the dataset. "
+            "<b>Green bars</b> = above benchmark. <b>Red bars</b> = gap opportunity for Praxiotech."
+        ),
+        "what_measures":  "What it measures:",
+        "rec_action":     "Recommended action:",
+        "critical_gap":   "CRITICAL GAP",
+        # Dimension detail rows: (title, what, action)
+        "dim_details": [
+            (
+                "Reputation (30%)",
+                "Combines star rating quality (70%) and review volume social proof (30%). High-volume restaurants dominate local search.",
+                "Maintain 4.5+ star avg. Target 500+ reviews. Use post-visit follow-up automation."
+            ),
+            (
+                "Responsiveness (25%)",
+                "% of customer reviews receiving an owner reply. 89% of diners read owner responses before booking.",
+                "Target 90%+ response rate. Deploy Praxiotech AI Review Manager for 2-hour guaranteed replies."
+            ),
+            (
+                "Digital Presence (20%)",
+                "Website, phone contact, and booking infrastructure. Complete profiles convert 3x more Google Maps viewers.",
+                "Verify Google Business Profile. Add booking link. Refresh photos quarterly."
+            ),
+            (
+                "Intelligence (15%)",
+                "Sentiment derived from review rating patterns, identifying emotional triggers that drive repeat visits.",
+                "Monitor sentiment weekly. Address recurring negative themes within 30 days."
+            ),
+            (
+                "Visibility (10%)",
+                "Recency-weighted review velocity. Fresh reviews within 90 days heavily influence Google Maps ranking.",
+                "Launch SMS post-visit campaign. Target 3-5 new reviews per week."
+            ),
+        ],
+        # Gap page
+        "gap_title":  "03 / Competitive Gap Analysis",
+        "gap_intro":  (
+            "Gap analysis compares {res_name}'s performance against the market benchmark "
+            "(top 25th percentile of {total} establishments). "
+            "Positive delta = underperforming (Praxiotech opportunity). Negative = market advantage to defend."
+        ),
+        "gap_summary_title": "Gap Analysis Summary & Praxiotech Solutions",
+        "gap_headers": ["Dimension", "Current", "Target", "Gap", "Praxiotech Solution", "Investment", "Timeline", "Est. Lift"],
+        "top_lever": (
+            "<b>Top Sales Lever:</b> Closing the <b>{big}</b> gap of <b>{bv:.0f} pts</b> via Praxiotech's AI platform "
+            "delivers an average <b>+18 pt Health Score improvement</b> in 60 days — pushing {res_name} into the "
+            "<b>Top 3</b> and directly increasing organic booking volume."
+        ),
+        # Solution names in gap table
+        "sol_map": {
+            "Reputation":       "Review Velocity Campaign",
+            "Responsiveness":   "AI Review Manager",
+            "Digital Presence": "Profile Optimization",
+            "Intelligence":     "Sentiment Monitoring",
+            "Visibility":       "Engagement Booster",
+        },
+        # Momentum page
+        "mom_title": "04 / Momentum & Review Intelligence",
+        "mom_intro": (
+            "Momentum analysis tracks review velocity — the rate at which new customer reviews are generated. "
+            "A declining velocity signals reduced Google Maps ranking authority. "
+            "Surges indicate significant events requiring an active owner response strategy."
+        ),
+        "avg_velocity":     "AVG VELOCITY",
+        "three_month":      "3-MONTH TREND",
+        "trend_status":     "TREND STATUS",
+        "months_analyzed":  "MONTHS ANALYZED",
+        "declining":        "DECLINING",
+        "stable":           "STABLE",
+        "accelerating":     "ACCELERATING",
+        "review_velocity_chart": "Review Velocity (13-Month)",
+        "rating_split":     "Rating Split",
+        # Action plan page
+        "action_title": "05 / Action Plan & Investment Roadmap",
+        "action_intro": (
+            "The following 90-day plan translates audit findings into a structured engagement for {res_name}. "
+            "Each initiative maps to a Praxiotech service, investment level, and projected outcome."
+        ),
+        "action_headers": ["Phase", "Timeframe", "Initiative", "Praxiotech Service", "Investment", "KPI"],
+        "action_rows": [
+            ["QUICK WIN", "Days 1-14",  "Google Profile Optimization",   "Profile Audit + Setup",   "60 EUR/mo",  "Profile 100%"],
+            ["QUICK WIN", "Days 1-14",  "AI Review Responses Live",      "AI Review Manager",       "120 EUR/mo", "Rate > 80%"],
+            ["GROWTH",    "Days 15-45", "Review Velocity Campaign",      "SMS Follow-up System",    "80 EUR/mo",  "+15 reviews"],
+            ["GROWTH",    "Days 15-45", "Sentiment Monitoring",          "Sentiment Dashboard",     "80 EUR/mo",  "Alert <2hr"],
+            ["AUTHORITY", "Days 46-90", "Monthly Intelligence Brief",    "Reporting Suite",         "Incl.",      "Top 3 rank"],
+            ["AUTHORITY", "Days 46-90", "ROI Attribution Report",        "Revenue Dashboard",       "Incl.",      "3x bookings"],
+        ],
+        "phase_labels": {
+            "QUICK WIN": "QUICK WIN",
+            "GROWTH":    "GROWTH",
+            "AUTHORITY": "AUTHORITY",
+        },
+        "inv_summary_title": "Investment Summary",
+        "inv_headers": ["Service Tier", "Monthly", "Annual", "Expected Impact"],
+        "inv_rows": [
+            ["Starter  (AI Reviews + Profile)",    "180 EUR", "2,160 EUR", "+8-15% booking conversion"],
+            ["Growth   (+ Velocity + Sentiment)",  "340 EUR", "4,080 EUR", "+20-30% digital authority"],
+            ["Authority (Full Suite)",             "480 EUR", "5,760 EUR", "+35-50% organic traffic"],
+            ["RECOMMENDED FOR THIS RESTAURANT",   "340 EUR", "4,080 EUR", "Est. ROI: 4.2x in 12 months"],
+        ],
+        "sales_pitch_title":  "Sales Pitch Scripts",
+        "pitch_en_label":     "ENGLISH Opening Hook",
+        "pitch_de_label":     "DEUTSCH Verkaufsargument",
+        "disclaimer": (
+            "Disclaimer: This brief is for internal Praxiotech sales use only. Benchmarks derived from public "
+            "Google Maps data. Projected ROI figures are estimates based on comparable client results and are not guaranteed. "
+            "Prepared {date}."
+        ),
+    },
+    "DE": {
+        # Header / footer
+        "header_left":  "RESTAURANT UMSATZ INTELLIGENZ  |  PRAXIOTECH",
+        "header_right": "VERTRAULICH  ·  SEITE {pg} VON 6",
+        "footer_left":  "Erstellt: {date}  ·  Intelligenz-Engine v1.3  ·  Restaurant Audit",
+        "footer_right": "Nur für internen Vertrieb  ·  © Praxiotech GmbH",
+        # Cover
+        "badge":        "INTELLIGENZ-ENGINE AKTIV v1.3",
+        "cover_line1":  "RESTAURANT",
+        "cover_line2":  "UMSATZ",
+        "cover_line3":  "INTELLIGENZ",
+        "ranked_line":  "Bewertet #{rank} von {total} Restaurants",
+        "confidential": "Ausschließlich für das Praxiotech GmbH Vertriebsteam erstellt · VERTRAULICH",
+        "kpi_health":   "GESUNDHEITSSCORE",
+        "kpi_rank":     "BEZIRKSRANG",
+        "kpi_rating":   "STERNBEWERTUNG",
+        "kpi_response": "REAKTIONSFÄHIGKEIT",
+        # Exec summary
+        "exec_title":   "01 / Zusammenfassung",
+        "exec_body":    (
+            "Dieser Umsatz-Intelligence-Brief präsentiert eine umfassende digitale Prüfung von <b>{res_name}</b>, "
+            "derzeit auf Platz <b>#{rank} von {total}</b> im Praxiotech Intelligence Index. "
+            "Das Restaurant hält einen <b>digitalen Gesundheitsscore von {health:.1f}/100</b>, "
+            "basierend auf einer {rating:.1f}-Sterne-Google-Bewertung aus {rev_count:,} Kundenbewertungen. "
+            "Während das Unternehmen starke Gästezufriedenheitswerte aufweist, "
+            "identifiziert dieses Audit kritische Optimierungslücken — insbesondere bei der Reaktionsfähigkeit des Eigentümers "
+            "(<b>{res_rate:.0f}%</b> aktuell vs. 90% Best Practice) — "
+            "die unmittelbare, renditestarke Chancen für die Praxiotech-Plattform darstellen."
+        ),
+        "primary_finding": "Hauptbefund:",
+        "finding_body": (
+            "<b>Hauptbefund:</b> Die größte Lücke liegt bei <b>{top_gap}</b> ({top_val:+.1f} Punkte vs. Benchmark). "
+            "Das Schließen dieser einzelnen Lücke über Praxiotech würde {res_name} in die <b>Top 3</b> bringen."
+        ),
+        "perf_scorecard":       "Leistungs-Scorecard",
+        "cust_persona_title":   "Kundenpersona-Intelligenz",
+        "primary_persona_lbl":  "Primäre Persona:",
+        "segment_lbl":          "Segment:",
+        "core_motivation_lbl":  "Kernmotivation:",
+        # Scorecard status labels
+        "strength":    "STÄRKE",
+        "opportunity": "POTENZIAL",
+        "critical":    "KRITISCH",
+        # Scorecard headers
+        "sc_dimension": "Dimension",
+        "sc_weight":    "Gewicht",
+        "sc_score":     "Punktzahl /100",
+        "sc_benchmark": "Benchmark",
+        "sc_delta":     "Delta",
+        "sc_status":    "Status",
+        # Dimension page
+        "dim_title":  "02 / Dimension Tiefenanalyse",
+        "dim_intro":  (
+            "Jede der fünf Leistungsdimensionen wird unabhängig bewertet (0–100), nach Geschäftsauswirkung gewichtet "
+            "und gegen das obere 25. Perzentil aller Betriebe im Datensatz verglichen. "
+            "<b>Grüne Balken</b> = über Benchmark. <b>Rote Balken</b> = Lückenpotenzial für Praxiotech."
+        ),
+        "what_measures":  "Was gemessen wird:",
+        "rec_action":     "Empfohlene Maßnahme:",
+        "critical_gap":   "KRITISCHE LÜCKE",
+        # Dimension detail rows
+        "dim_details": [
+            (
+                "Reputation (30%)",
+                "Kombiniert Bewertungsqualität (70%) und Rezensionsvolumen als sozialen Beweis (30%). Restaurants mit vielen Bewertungen dominieren die lokale Suche.",
+                "Durchschnitt von 4,5+ Sternen halten. Ziel: 500+ Bewertungen. Post-Visit-Folgekampagne nutzen."
+            ),
+            (
+                "Reaktionsfähigkeit (25%)",
+                "Anteil der Kundenbewertungen, die eine Antwort des Inhabers erhalten. 89% der Gäste lesen Inhaberantworten vor der Buchung.",
+                "Ziel: 90%+ Antwortrate. Praxiotech KI-Bewertungsmanager für garantierte 2-Stunden-Antworten einsetzen."
+            ),
+            (
+                "Digitale Präsenz (20%)",
+                "Website, Telefonkontakt und Buchungsinfrastruktur. Vollständige Profile konvertieren 3x mehr Google Maps-Besucher.",
+                "Google Business Profile überprüfen. Buchungslink hinzufügen. Fotos vierteljährlich aktualisieren."
+            ),
+            (
+                "Intelligenz (15%)",
+                "Stimmung aus Bewertungsmustern, die emotionale Auslöser für Wiederholungsbesuche identifiziert.",
+                "Stimmung wöchentlich überwachen. Wiederkehrende negative Themen innerhalb von 30 Tagen ansprechen."
+            ),
+            (
+                "Sichtbarkeit (10%)",
+                "Aktualitätsgewichtete Bewertungsgeschwindigkeit. Frische Bewertungen der letzten 90 Tage beeinflussen das Google Maps-Ranking erheblich.",
+                "SMS-Post-Visit-Kampagne starten. Ziel: 3-5 neue Bewertungen pro Woche."
+            ),
+        ],
+        # Gap page
+        "gap_title":  "03 / Lückenanalyse & Möglichkeiten",
+        "gap_intro":  (
+            "Die Lückenanalyse vergleicht die Leistung von {res_name} mit dem Marktbenchmark "
+            "(oberes 25. Perzentil von {total} Betrieben). "
+            "Positives Delta = Unterleistung (Praxiotech-Chance). Negativ = Marktvorteil zu verteidigen."
+        ),
+        "gap_summary_title": "Lückenanalyse & Praxiotech-Lösungen",
+        "gap_headers": ["Dimension", "Aktuell", "Ziel", "Lücke", "Praxiotech Lösung", "Investition", "Zeitrahmen", "Geschätzte Steigerung"],
+        "top_lever": (
+            "<b>Wichtigster Verkaufshebel:</b> Das Schließen der <b>{big}</b>-Lücke von <b>{bv:.0f} Punkten</b> über die Praxiotech KI-Plattform "
+            "liefert durchschnittlich eine <b>+18-Punkte-Verbesserung des Gesundheitsscores</b> in 60 Tagen — "
+            "{res_name} wird in die <b>Top 3</b> befördert und das organische Buchungsvolumen direkt gesteigert."
+        ),
+        # Solution names in gap table (German)
+        "sol_map": {
+            "Reputation":       "Bewertungsgeschwindigkeit-Kampagne",
+            "Responsiveness":   "KI-Bewertungsmanager",
+            "Digital Presence": "Profiloptimierung",
+            "Intelligence":     "Stimmungsüberwachung",
+            "Visibility":       "Engagement-Booster",
+        },
+        # Momentum page
+        "mom_title": "04 / Impulse & Bewertungsanalytik",
+        "mom_intro": (
+            "Die Impulsanalyse verfolgt die Bewertungsgeschwindigkeit — die Rate, mit der neue Kundenbewertungen generiert werden. "
+            "Eine sinkende Geschwindigkeit signalisiert geringere Google Maps-Ranking-Autorität. "
+            "Anstiege weisen auf bedeutende Ereignisse hin, die eine aktive Inhaberantwort-Strategie erfordern."
+        ),
+        "avg_velocity":     "DURCHSCHN. GESCHWINDIGKEIT",
+        "three_month":      "3-MONATS-TREND",
+        "trend_status":     "TRENDSTATUS",
+        "months_analyzed":  "MONATE ANALYSIERT",
+        "declining":        "RÜCKLÄUFIG",
+        "stable":           "STABIL",
+        "accelerating":     "BESCHLEUNIGEND",
+        "review_velocity_chart": "Bewertungsgeschwindigkeit (13 Monate)",
+        "rating_split":     "Bewertungsverteilung",
+        # Action plan page
+        "action_title": "05 / Aktionsplan & Produktpassung",
+        "action_intro": (
+            "Der folgende 90-Tage-Plan überführt die Audit-Ergebnisse in ein strukturiertes Engagement für {res_name}. "
+            "Jede Initiative wird einem Praxiotech-Service, Investitionsniveau und prognostizierten Ergebnis zugeordnet."
+        ),
+        "action_headers": ["Phase", "Zeitrahmen", "Initiative", "Praxiotech Service", "Investition", "KPI"],
+        "action_rows": [
+            ["SCHNELLER ERFOLG", "Tage 1-14",  "Google Profil Optimierung",          "Profil Audit + Einrichtung",  "60 EUR/Mo.",  "Profil 100%"],
+            ["SCHNELLER ERFOLG", "Tage 1-14",  "KI-Bewertungsantworten Live",        "KI-Bewertungsmanager",        "120 EUR/Mo.", "Rate > 80%"],
+            ["WACHSTUM",         "Tage 15-45", "Bewertungsgeschwindigkeit-Kampagne", "SMS-Folge-System",            "80 EUR/Mo.",  "+15 Bewertungen"],
+            ["WACHSTUM",         "Tage 15-45", "Stimmungsüberwachung",               "Stimmungs-Dashboard",         "80 EUR/Mo.",  "Alarm <2Std."],
+            ["AUTORITÄT",        "Tage 46-90", "Monatlicher Intelligenz-Brief",       "Berichts-Suite",              "Inkl.",       "Top-3-Rang"],
+            ["AUTORITÄT",        "Tage 46-90", "ROI-Attributionsbericht",             "Umsatz-Dashboard",            "Inkl.",       "3x Buchungen"],
+        ],
+        "phase_labels": {
+            "SCHNELLER ERFOLG": "SCHNELLER ERFOLG",
+            "WACHSTUM":         "WACHSTUM",
+            "AUTORITÄT":        "AUTORITÄT",
+        },
+        "inv_summary_title": "Investitionsübersicht",
+        "inv_headers": ["Service-Paket", "Monatlich", "Jährlich", "Erwartete Wirkung"],
+        "inv_rows": [
+            ["Starter  (KI-Bewertungen + Profil)",     "180 EUR", "2.160 EUR", "+8-15% Buchungskonversion"],
+            ["Wachstum (+ Geschwindigkeit + Stimmung)","340 EUR", "4.080 EUR", "+20-30% digitale Autorität"],
+            ["Autorität (Vollpaket)",                  "480 EUR", "5.760 EUR", "+35-50% organischer Traffic"],
+            ["EMPFOHLEN FÜR DIESES RESTAURANT",        "340 EUR", "4.080 EUR", "Geschätzter ROI: 4,2x in 12 Monaten"],
+        ],
+        "sales_pitch_title":  "Verkaufsargumente",
+        "pitch_en_label":     "ENGLISH Opening Hook",
+        "pitch_de_label":     "DEUTSCH Verkaufsargument",
+        "disclaimer": (
+            "Haftungsausschluss: Dieser Brief ist ausschließlich für den internen Praxiotech-Vertrieb bestimmt. "
+            "Benchmarks basieren auf öffentlichen Google Maps-Daten. Prognostizierte ROI-Zahlen sind Schätzungen "
+            "basierend auf vergleichbaren Kundenergebnissen und sind nicht garantiert. "
+            "Erstellt {date}."
+        ),
+    },
+}
+
+
+def _tx(language: str, key: str, **kwargs):
+    """Get a translated string, falling back to EN."""
+    lang = language.upper() if language else "EN"
+    if lang not in _TEXT:
+        lang = "EN"
+    val = _TEXT[lang].get(key, _TEXT["EN"].get(key, key))
+    if kwargs and isinstance(val, str):
+        try:
+            return val.format(**kwargs)
+        except Exception:
+            return val
+    return val
+
+
 # ── Public entry ──────────────────────────────────────────────────────────────────
 def generate_pdf_report(res_name, res_data, scores, gaps, momentum_data,
                         persona, benchmarks, df_rest, df_rev, rank, total, language="EN"):
-    """
-    Generate a PDF report with language support.
-
-    Args:
-        language: "EN" for English or "DE" for German (default: "EN")
-    """
-    # Import translations
-    from translations import t
-
+    """Generate a PDF report with full EN/DE language support."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -91,12 +426,16 @@ def generate_pdf_report(res_name, res_data, scores, gaps, momentum_data,
     story.append(PageBreak())
     story += _action_page(res_name, scores, gaps, persona, language)
 
-    doc.build(story, onFirstPage=_chrome, onLaterPages=_chrome)
+    # Pass language to _chrome via a closure
+    def chrome_fn(canvas, doc):
+        _chrome(canvas, doc, language)
+
+    doc.build(story, onFirstPage=chrome_fn, onLaterPages=chrome_fn)
     buf.seek(0)
     return buf.read()
 
 
-def _chrome(canvas, doc):
+def _chrome(canvas, doc, language="EN"):
     canvas.saveState()
     pg = canvas.getPageNumber()
     if pg == 1:
@@ -111,21 +450,20 @@ def _chrome(canvas, doc):
         canvas.rect(0, H-11, W, 11, fill=1, stroke=0)
         canvas.setFont('Helvetica-Bold', 7)
         canvas.setFillColor(white)
-        canvas.drawString(16*mm, H-7.5, "RESTAURANT REVENUE INTELLIGENCE  |  PRAXIOTECH")
-        canvas.drawRightString(W-16*mm, H-7.5, f"CONFIDENTIAL  ·  PAGE {pg} OF 6")
+        canvas.drawString(16*mm, H-7.5, _tx(language, "header_left"))
+        canvas.drawRightString(W-16*mm, H-7.5, _tx(language, "header_right", pg=pg))
         canvas.setFillColor(CBd)
         canvas.rect(0, 0, W, 12, fill=1, stroke=0)
         canvas.setFont('Helvetica', 7)
         canvas.setFillColor(CSl)
-        canvas.drawString(16*mm, 4, f"Generated: {datetime.now().strftime('%d %b %Y')}  ·  Intelligence Engine v1.3  ·  Restaurant Audit")
-        canvas.drawRightString(W-16*mm, 4, "For Internal Sales Use Only  ·  © Praxiotech GmbH")
+        canvas.drawString(16*mm, 4, _tx(language, "footer_left", date=datetime.now().strftime('%d %b %Y')))
+        canvas.drawRightString(W-16*mm, 4, _tx(language, "footer_right"))
     canvas.restoreState()
 
 
 def _cover(res_name, res_data, scores, rank, total, language="EN"):
-    from translations import t
     story = [Spacer(1, 35*mm)]
-    badge = Table([[f"  {t('pdf_intelligence_engine', language)}  "]])
+    badge = Table([[f"  {_tx(language, 'badge')}  "]])
     badge.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),CB), ('TEXTCOLOR',(0,0),(-1,-1),white),
         ('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8),
@@ -134,18 +472,22 @@ def _cover(res_name, res_data, scores, rank, total, language="EN"):
     ]))
     story.append(badge)
     story.append(Spacer(1, 7*mm))
-    for txt_key, clr, sz in [(t("pdf_restaurant", language), white, 44), (t("pdf_revenue", language), CB, 44), (t("pdf_intelligence", language), white, 44)]:
+    for txt_key, clr, sz in [
+        (_tx(language, 'cover_line1'), white, 44),
+        (_tx(language, 'cover_line2'), CB,    44),
+        (_tx(language, 'cover_line3'), white, 44),
+    ]:
         story.append(Paragraph(txt_key, S('CT', fontName='Helvetica-Bold', fontSize=sz, textColor=clr, leading=48, spaceAfter=0)))
     story.append(Spacer(1, 4*mm))
     story.append(HRFlowable(width='100%', thickness=1, color=CDB, spaceAfter=4*mm))
     story.append(Paragraph(res_name, S('CRN', fontName='Helvetica-Bold', fontSize=22, textColor=HexColor('#94A3B8'), spaceAfter=2*mm)))
     story.append(Paragraph(
-        t('pdf_ranked', language, rank=rank, total=total) + f"  ·  {datetime.now().strftime('%B %Y')}",
+        _tx(language, 'ranked_line', rank=rank, total=total) + f"  ·  {datetime.now().strftime('%B %Y')}",
         S('CRM', fontSize=11, textColor=HexColor('#475569'), spaceAfter=10*mm)
     ))
     h = scores['Composite']
     kd = [
-        [t("pdf_health_score", language), t("pdf_district_rank", language), t("pdf_star_rating", language), t("pdf_responsiveness", language)],
+        [_tx(language, 'kpi_health'), _tx(language, 'kpi_rank'), _tx(language, 'kpi_rating'), _tx(language, 'kpi_response')],
         [f"{h:.1f}/100", f"#{rank}/{total}", f"{float(res_data.get('rating_n',0)):.1f} ★", f"{scores['Responsiveness']:.0f}%"]
     ]
     kt = Table(kd, colWidths=[44*mm]*4)
@@ -163,15 +505,13 @@ def _cover(res_name, res_data, scores, rank, total, language="EN"):
     ]))
     story.append(kt)
     story.append(Spacer(1, 6*mm))
-    story.append(Paragraph(t("pdf_confidential", language),
-                            S('CF', fontSize=9, textColor=HexColor('#475569'))))
+    story.append(Paragraph(_tx(language, 'confidential'), S('CF', fontSize=9, textColor=HexColor('#475569'))))
     return story
 
 
 def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchmarks, language="EN"):
-    from translations import t
     story = [Spacer(1, 5*mm)]
-    story.append(Paragraph(t("pdf_exec_summary", language), STYLES['H1']))
+    story.append(Paragraph(_tx(language, 'exec_title'), STYLES['H1']))
     story.append(HRFlowable(width='100%', thickness=2, color=CB, spaceAfter=3*mm))
 
     rating    = float(res_data.get('rating_n', 0) or 0)
@@ -180,21 +520,16 @@ def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchm
     health    = scores['Composite']
 
     story.append(Paragraph(
-        f"This Revenue Intelligence Brief presents a comprehensive digital audit of <b>{res_name}</b>, "
-        f"currently ranked <b>#{rank} of {total}</b> in the Praxiotech Intelligence Index. "
-        f"The restaurant holds a <b>Digital Health Score of {health:.1f}/100</b>, "
-        f"built on a {rating:.1f}-star Google rating across {rev_count:,} customer reviews. "
-        f"While the establishment demonstrates strong guest satisfaction metrics, "
-        f"this audit identifies critical optimization gaps — most notably in owner responsiveness "
-        f"(<b>{res_rate*100:.0f}%</b> current vs. 90% industry best practice) — "
-        f"that represent immediate, high-ROI opportunities for the Praxiotech platform.",
+        _tx(language, 'exec_body',
+            res_name=res_name, rank=rank, total=total,
+            health=health, rating=rating, rev_count=rev_count,
+            res_rate=res_rate*100),
         STYLES['Body']))
 
     top_gap = max(gaps, key=gaps.get) if gaps else 'Responsiveness'
     top_val = gaps.get(top_gap, 0)
     callout = Table([[Paragraph(
-        f"<b>Primary Finding:</b> The largest gap is in <b>{top_gap}</b> ({top_val:+.1f} pts vs. benchmark). "
-        f"Closing this single gap via Praxiotech would move {res_name} into the <b>Top 3</b>.",
+        _tx(language, 'finding_body', top_gap=top_gap, top_val=top_val, res_name=res_name),
         S('CB', fontSize=10, textColor=CN, leading=14))]], colWidths=[175*mm])
     callout.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),CBI), ('LINEABOVE',(0,0),(-1,-1),3,CB),
@@ -205,7 +540,7 @@ def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchm
     story.append(callout)
     story.append(Spacer(1, 4*mm))
 
-    story.append(Paragraph("Performance Scorecard", STYLES['H2']))
+    story.append(Paragraph(_tx(language, 'perf_scorecard'), STYLES['H2']))
     bench_map = {
         'Reputation':       benchmarks.get('rating', 4.4)*20,
         'Responsiveness':   90.0,
@@ -218,13 +553,22 @@ def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchm
     wts  = ['30%','25%','20%','15%','10%','—']
     vals = [scores[d if d != 'COMPOSITE' else 'Composite'] for d in dims]
 
-    hrow = [Paragraph(text, STYLES['TH']) for text in [t('pdf_dimension', language), 'Weight', t('pdf_score', language) + ' /100', t('pdf_benchmark', language), 'Delta', t('pdf_status', language)]]
+    hrow = [Paragraph(text, STYLES['TH']) for text in [
+        _tx(language, 'sc_dimension'), _tx(language, 'sc_weight'),
+        _tx(language, 'sc_score'), _tx(language, 'sc_benchmark'),
+        _tx(language, 'sc_delta'), _tx(language, 'sc_status'),
+    ]]
     rows = [hrow]
     for i, dim in enumerate(dims):
         sc = vals[i]; bv = bench_map[dim]; dt = sc - bv
         ds = f"+{dt:.1f}" if dt >= 0 else f"{dt:.1f}"
         dc = CG if dt >= 0 else CR
-        st = 'STRENGTH' if dt >= 0 else ('OPPORTUNITY' if dt > -15 else 'CRITICAL')
+        if dt >= 0:
+            st = _tx(language, 'strength')
+        elif dt > -15:
+            st = _tx(language, 'opportunity')
+        else:
+            st = _tx(language, 'critical')
         bold = dim == 'COMPOSITE'
         fn   = 'Helvetica-Bold' if bold else 'Helvetica'
         rows.append([
@@ -256,12 +600,12 @@ def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchm
     story.append(sc_table)
     story.append(Spacer(1, 4*mm))
 
-    story.append(Paragraph("Customer Persona Intelligence", STYLES['H2']))
+    story.append(Paragraph(_tx(language, 'cust_persona_title'), STYLES['H2']))
     p = persona
     pt = Table([
-        [Paragraph(f"<b>Primary Persona:</b> {p['primary']}", STYLES['Body']),
-         Paragraph(f"<b>Segment:</b> {p['segment']}", STYLES['Body'])],
-        [Paragraph(f"<b>Core Motivation:</b> {p['motivation']}", STYLES['Body']), ""],
+        [Paragraph(f"<b>{_tx(language, 'primary_persona_lbl')}</b> {p['primary']}", STYLES['Body']),
+         Paragraph(f"<b>{_tx(language, 'segment_lbl')}</b> {p['segment']}", STYLES['Body'])],
+        [Paragraph(f"<b>{_tx(language, 'core_motivation_lbl')}</b> {p['motivation']}", STYLES['Body']), ""],
     ], colWidths=[87*mm, 88*mm])
     pt.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),CLt), ('LINEABOVE',(0,0),(-1,0),2,CT),
@@ -275,15 +619,10 @@ def _exec_summary(res_name, res_data, scores, gaps, rank, total, persona, benchm
 
 
 def _dimension_page(res_name, scores, benchmarks, language="EN"):
-    from translations import t
     story = [Spacer(1, 5*mm)]
-    story.append(Paragraph(t("pdf_dimension_analysis", language), STYLES['H1']))
+    story.append(Paragraph(_tx(language, 'dim_title'), STYLES['H1']))
     story.append(HRFlowable(width='100%', thickness=2, color=CT, spaceAfter=3*mm))
-    story.append(Paragraph(
-        "Each of the five performance dimensions is independently scored (0–100), weighted by business impact, "
-        "and benchmarked against the top 25th percentile of all establishments in the dataset. "
-        "<b>Green bars</b> = above benchmark. <b>Red bars</b> = gap opportunity for Praxiotech.",
-        STYLES['Body']))
+    story.append(Paragraph(_tx(language, 'dim_intro'), STYLES['Body']))
 
     dims     = ['Reputation','Responsiveness','Digital\nPresence','Intelligence','Visibility']
     sc_vals  = [scores['Reputation'], scores['Responsiveness'], scores['Digital Presence'], scores['Intelligence'], scores['Visibility']]
@@ -314,39 +653,28 @@ def _dimension_page(res_name, scores, benchmarks, language="EN"):
         story.append(RLImage(buf, width=168*mm, height=68*mm))
     except Exception:
         story.append(Paragraph(
-            "Plots unavailable — `matplotlib`/`numpy` not installed. To enable plots, install: pip install matplotlib numpy",
+            "Plots unavailable — install: pip install matplotlib numpy",
             STYLES['Note']))
     story.append(Spacer(1, 4*mm))
 
-    dim_details = [
-        ('Reputation (30%)',       scores['Reputation'],       benchmarks.get('rating',4.4)*20,
-         'Combines star rating quality (70%) and review volume social proof (30%). High-volume restaurants dominate local search.',
-         'Maintain 4.5+ star avg. Target 500+ reviews. Use post-visit follow-up automation.'),
-        ('Responsiveness (25%)',   scores['Responsiveness'],   90,
-         '% of customer reviews receiving an owner reply. 89% of diners read owner responses before booking.',
-         'Target 90%+ response rate. Deploy Praxiotech AI Review Manager for 2-hour guaranteed replies.'),
-        ('Digital Presence (20%)', scores['Digital Presence'], 85,
-         'Website, phone contact, and booking infrastructure. Complete profiles convert 3x more Google Maps viewers.',
-         'Verify Google Business Profile. Add booking link. Refresh photos quarterly.'),
-        ('Intelligence (15%)',     scores['Intelligence'],     75,
-         'Sentiment derived from review rating patterns, identifying emotional triggers that drive repeat visits.',
-         'Monitor sentiment weekly. Address recurring negative themes within 30 days.'),
-        ('Visibility (10%)',       scores['Visibility'],       70,
-         'Recency-weighted review velocity. Fresh reviews within 90 days heavily influence Google Maps ranking.',
-         'Launch SMS post-visit campaign. Target 3-5 new reviews per week.'),
-    ]
+    dim_details = _tx(language, 'dim_details')
+    sc_list = [scores['Reputation'], scores['Responsiveness'], scores['Digital Presence'], scores['Intelligence'], scores['Visibility']]
+    bm_list = [benchmarks.get('rating',4.4)*20, 90, 85, 75, 70]
 
-    for name, sc, bv, what, action in dim_details:
+    for i, (name, what, action) in enumerate(dim_details):
+        sc = sc_list[i]; bv = bm_list[i]
         dt = sc - bv
         bg = HexColor('#DCFCE7') if dt >= 0 else (HexColor('#FEF3C7') if dt > -15 else HexColor('#FEE2E2'))
         tc = CG if dt >= 0 else (CA if dt > -15 else CR)
-        st = 'STRENGTH' if dt >= 0 else ('OPPORTUNITY' if dt > -15 else 'CRITICAL GAP')
+        st = (_tx(language, 'strength') if dt >= 0
+              else (_tx(language, 'opportunity') if dt > -15
+                    else _tx(language, 'critical_gap')))
         card = Table([
             [Paragraph(f"<b>{name}</b>", S('dh',fontName='Helvetica-Bold',fontSize=10,textColor=CN)),
              Paragraph(f"<b>{sc:.1f} / 100</b>", S('dsv',fontName='Helvetica-Bold',fontSize=12,textColor=CB,alignment=TA_RIGHT)),
              Paragraph(f"<b>{st}</b>", S('dst',fontName='Helvetica-Bold',fontSize=8,textColor=tc,alignment=TA_CENTER))],
-            [Paragraph(f"<b>What it measures:</b> {what}", STYLES['Small']), '', ''],
-            [Paragraph(f"<b>Recommended action:</b> {action}", S('act',fontSize=8.5,textColor=HexColor('#0369A1'),leading=12)), '', ''],
+            [Paragraph(f"<b>{_tx(language, 'what_measures')}</b> {what}", STYLES['Small']), '', ''],
+            [Paragraph(f"<b>{_tx(language, 'rec_action')}</b> {action}", S('act',fontSize=8.5,textColor=HexColor('#0369A1'),leading=12)), '', ''],
         ], colWidths=[88*mm, 42*mm, 45*mm])
         card.setStyle(TableStyle([
             ('BACKGROUND',(0,0),(-1,0),HexColor('#F8FAFC')), ('BACKGROUND',(2,0),(2,0),bg),
@@ -362,15 +690,10 @@ def _dimension_page(res_name, scores, benchmarks, language="EN"):
 
 
 def _gap_page(res_name, scores, gaps, benchmarks, rank, total, language="EN"):
-    from translations import t
     story = [Spacer(1, 5*mm)]
-    story.append(Paragraph(t("pdf_gap_analysis", language), STYLES['H1']))
+    story.append(Paragraph(_tx(language, 'gap_title'), STYLES['H1']))
     story.append(HRFlowable(width='100%', thickness=2, color=CA, spaceAfter=3*mm))
-    story.append(Paragraph(
-        f"Gap analysis compares {res_name}'s performance against the market benchmark "
-        f"(top 25th percentile of {total} establishments). "
-        "Positive delta = underperforming (Praxiotech opportunity). Negative = market advantage to defend.",
-        STYLES['Body']))
+    story.append(Paragraph(_tx(language, 'gap_intro', res_name=res_name, total=total), STYLES['Body']))
 
     dims = ['Reputation','Responsiveness','Digital Presence','Intelligence','Visibility']
     sc_list = [scores[d] for d in dims]
@@ -402,25 +725,37 @@ def _gap_page(res_name, scores, gaps, benchmarks, rank, total, language="EN"):
         story.append(RLImage(buf, width=168*mm, height=65*mm))
     except Exception:
         story.append(Paragraph(
-            "Plots unavailable — `matplotlib`/`numpy` not installed. To enable plots, install: pip install matplotlib numpy",
+            "Plots unavailable — install: pip install matplotlib numpy",
             STYLES['Note']))
     story.append(Spacer(1, 4*mm))
 
-    story.append(Paragraph("Gap Analysis Summary & Praxiotech Solutions", STYLES['H2']))
-    prx_map = {
-        'Reputation':       ('Review Velocity Campaign', '80 EUR/mo',  '45 days', '+12-18 pts'),
-        'Responsiveness':   ('AI Review Manager',        '120 EUR/mo', '14 days', '+25-40 pts'),
-        'Digital Presence': ('Profile Optimization',     '60 EUR/mo',  '7 days',  '+15-25 pts'),
-        'Intelligence':     ('Sentiment Monitoring',     '80 EUR/mo',  '30 days', '+10-20 pts'),
-        'Visibility':       ('Engagement Booster',       '60 EUR/mo',  '30 days', '+10-15 pts'),
-    }
-    tgts = {'Reputation':90,'Responsiveness':90,'Digital Presence':90,'Intelligence':80,'Visibility':85}
+    story.append(Paragraph(_tx(language, 'gap_summary_title'), STYLES['H2']))
 
-    hrow = [Paragraph(col, STYLES['TH']) for col in [t('pdf_dimension', language), t('pdf_current', language), t('pdf_target', language), t('pdf_gap', language), t('pdf_solution', language), t('pdf_investment', language), t('pdf_timeline', language), t('pdf_est_lift', language)]]
+    sol_map = _tx(language, 'sol_map')
+    tgts = {'Reputation':90,'Responsiveness':90,'Digital Presence':90,'Intelligence':80,'Visibility':85}
+    inv_map = {
+        'Reputation':       '80 EUR/mo',
+        'Responsiveness':   '120 EUR/mo',
+        'Digital Presence': '60 EUR/mo',
+        'Intelligence':     '80 EUR/mo',
+        'Visibility':       '60 EUR/mo',
+    }
+    tm_map = {
+        'Reputation': '45 days', 'Responsiveness': '14 days',
+        'Digital Presence': '7 days', 'Intelligence': '30 days', 'Visibility': '30 days',
+    }
+    lift_map = {
+        'Reputation': '+12-18 pts', 'Responsiveness': '+25-40 pts',
+        'Digital Presence': '+15-25 pts', 'Intelligence': '+10-20 pts', 'Visibility': '+10-15 pts',
+    }
+
+    gap_headers = _tx(language, 'gap_headers')
+    hrow = [Paragraph(col, STYLES['TH']) for col in gap_headers]
     rows = [hrow]
     for dim in dims:
         sc = scores[dim]; tgt = tgts[dim]; gv = tgt - sc
-        sol, inv, tm, lift = prx_map[dim]
+        sol = sol_map.get(dim, dim)
+        inv = inv_map[dim]; tm = tm_map[dim]; lift = lift_map[dim]
         gc = CR if gv > 15 else (CA if gv > 0 else CG)
         gs = f"+{gv:.0f}" if gv > 0 else f"{gv:.0f}"
         rows.append([
@@ -449,9 +784,7 @@ def _gap_page(res_name, scores, gaps, benchmarks, rank, total, language="EN"):
     big = max(gaps, key=gaps.get) if gaps else 'Responsiveness'
     bv  = gaps.get(big, 0)
     ob  = Table([[Paragraph(
-        f"<b>Top Sales Lever:</b> Closing the <b>{big}</b> gap of <b>{bv:.0f} pts</b> via Praxiotech's AI platform "
-        f"delivers an average <b>+18 pt Health Score improvement</b> in 60 days — pushing {res_name} into the "
-        f"<b>Top 3</b> and directly increasing organic booking volume.",
+        _tx(language, 'top_lever', big=big, bv=bv, res_name=res_name),
         S('obody', fontSize=10, textColor=CN, leading=14))]], colWidths=[175*mm])
     ob.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,-1),COFF), ('LINEABOVE',(0,0),(-1,-1),3,CA),
@@ -464,23 +797,17 @@ def _gap_page(res_name, scores, gaps, benchmarks, rank, total, language="EN"):
 
 
 def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, language="EN"):
-    from translations import t
     import pandas as pd
     story = [Spacer(1, 5*mm)]
-    story.append(Paragraph(t("pdf_momentum", language), STYLES['H1']))
+    story.append(Paragraph(_tx(language, 'mom_title'), STYLES['H1']))
     story.append(HRFlowable(width='100%', thickness=2, color=CG, spaceAfter=3*mm))
-    story.append(Paragraph(
-        "Momentum analysis tracks review velocity — the rate at which new customer reviews are generated. "
-        "A declining velocity signals reduced Google Maps ranking authority. "
-        "Surges indicate significant events requiring an active owner response strategy.",
-        STYLES['Body']))
+    story.append(Paragraph(_tx(language, 'mom_intro'), STYLES['Body']))
 
     if momentum_data is not None and len(momentum_data) > 0:
         months = [str(m)[:7] for m in momentum_data['month']]
         counts = [float(c) for c in momentum_data['count']]
     else:
         months = [f"M-{i}" for i in range(13)]
-        # numpy may be unavailable; fall back to a simple deterministic default
         try:
             import numpy as np
             counts = np.random.poisson(3.5, 13).tolist()
@@ -489,8 +816,18 @@ def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, l
 
     avg_vel = sum(counts)/len(counts) if counts else 0
     recent3 = sum(counts[-3:])/3 if len(counts) >= 3 else avg_vel
-    trend_str = "ACCELERATING" if recent3 > avg_vel*1.1 else ("DECLINING" if recent3 < avg_vel*0.8 else "STABLE")
-    trend_clr = '#22C55E' if trend_str == "ACCELERATING" else ('#EF4444' if trend_str == 'DECLINING' else '#F59E0B')
+
+    if recent3 > avg_vel * 1.1:
+        trend_key = "accelerating"
+        trend_clr = '#22C55E'
+    elif recent3 < avg_vel * 0.8:
+        trend_key = "declining"
+        trend_clr = '#EF4444'
+    else:
+        trend_key = "stable"
+        trend_clr = '#F59E0B'
+
+    trend_str = _tx(language, trend_key).upper()
 
     try:
         import matplotlib
@@ -508,7 +845,8 @@ def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, l
         step = max(1, len(months)//6)
         ax1.set_xticks(list(range(0, len(months), step)))
         ax1.set_xticklabels([months[i][-5:] for i in range(0, len(months), step)], fontsize=7.5)
-        ax1.set_ylabel('Reviews/Month', fontsize=8); ax1.set_title('Review Velocity (13-Month)', fontsize=9, pad=4)
+        ax1.set_ylabel('Reviews/Month', fontsize=8)
+        ax1.set_title(_tx(language, 'review_velocity_chart'), fontsize=9, pad=4)
         ax1.axhline(avg_vel, color='#64748B', linewidth=1, linestyle='--', alpha=0.7)
 
         rc = None
@@ -525,7 +863,7 @@ def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, l
 
         donut_clrs = ['#22C55E','#86EFAC','#FCD34D','#FCA5A5','#EF4444']
         ax2.pie(rc.values, colors=donut_clrs[:len(rc)], startangle=90, wedgeprops={'width':0.5})
-        ax2.set_title('Rating Split', fontsize=9, pad=4)
+        ax2.set_title(_tx(language, 'rating_split'), fontsize=9, pad=4)
         ax2.legend([f"{i}★ ({v})" for i,v in zip(rc.index, rc.values)],
                    loc='lower center', bbox_to_anchor=(0.5,-0.22), fontsize=6.5, ncol=2, framealpha=0.8)
         plt.tight_layout()
@@ -533,15 +871,18 @@ def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, l
         story.append(RLImage(buf, width=168*mm, height=65*mm))
     except Exception:
         story.append(Paragraph(
-            "Plots unavailable — `matplotlib` not installed. To enable plots, install: pip install matplotlib numpy",
+            "Plots unavailable — install: pip install matplotlib numpy",
             STYLES['Note']))
     story.append(Spacer(1, 3*mm))
 
     tc_clr = HexColor(trend_clr)
     srow = [
-        [Paragraph("AVG VELOCITY", STYLES['KPIL']), Paragraph("3-MONTH TREND", STYLES['KPIL']),
-         Paragraph("TREND STATUS", STYLES['KPIL']),  Paragraph("MONTHS ANALYZED", STYLES['KPIL'])],
-        [Paragraph(f"<b>{avg_vel:.1f}/mo</b>", STYLES['KPIV']), Paragraph(f"<b>{recent3:.1f}/mo</b>", STYLES['KPIV']),
+        [Paragraph(_tx(language, 'avg_velocity'),    STYLES['KPIL']),
+         Paragraph(_tx(language, 'three_month'),     STYLES['KPIL']),
+         Paragraph(_tx(language, 'trend_status'),    STYLES['KPIL']),
+         Paragraph(_tx(language, 'months_analyzed'), STYLES['KPIL'])],
+        [Paragraph(f"<b>{avg_vel:.1f}/mo</b>", STYLES['KPIV']),
+         Paragraph(f"<b>{recent3:.1f}/mo</b>", STYLES['KPIV']),
          Paragraph(f"<b>{trend_str}</b>", S('ts',fontName='Helvetica-Bold',fontSize=13,textColor=tc_clr,alignment=TA_CENTER)),
          Paragraph(f"<b>{len(counts)}</b>", STYLES['KPIV'])],
     ]
@@ -558,34 +899,32 @@ def _momentum_page(res_name, res_data, scores, momentum_data, df_rest, df_rev, l
 
 
 def _action_page(res_name, scores, gaps, persona, language="EN"):
-    from translations import t
     story = [Spacer(1, 5*mm)]
-    story.append(Paragraph(t("pdf_action_plan", language), STYLES['H1']))
+    story.append(Paragraph(_tx(language, 'action_title'), STYLES['H1']))
     story.append(HRFlowable(width='100%', thickness=2, color=CPu, spaceAfter=3*mm))
-    story.append(Paragraph(
-        f"The following 90-day plan translates audit findings into a structured engagement for {res_name}. "
-        "Each initiative maps to a Praxiotech service, investment level, and projected outcome.",
-        STYLES['Body']))
+    story.append(Paragraph(_tx(language, 'action_intro', res_name=res_name), STYLES['Body']))
 
-    rdmap = [
-        ["Phase","Timeframe","Initiative","Praxiotech Service","Investment","KPI"],
-        ["QUICK WIN","Days 1-14","Google Profile Optimization","Profile Audit + Setup","60 EUR/mo","Profile 100%"],
-        ["QUICK WIN","Days 1-14","AI Review Responses Live","AI Review Manager","120 EUR/mo","Rate > 80%"],
-        ["GROWTH","Days 15-45","Review Velocity Campaign","SMS Follow-up System","80 EUR/mo","+15 reviews"],
-        ["GROWTH","Days 15-45","Sentiment Monitoring","Sentiment Dashboard","80 EUR/mo","Alert <2hr"],
-        ["AUTHORITY","Days 46-90","Monthly Intelligence Brief","Reporting Suite","Incl.","Top 3 rank"],
-        ["AUTHORITY","Days 46-90","ROI Attribution Report","Revenue Dashboard","Incl.","3x bookings"],
-    ]
-    phase_bg = {'QUICK WIN': HexColor('#DCFCE7'), 'GROWTH': HexColor('#DBEAFE'), 'AUTHORITY': HexColor('#EDE9FE')}
-    phase_tc = {'QUICK WIN': CG, 'GROWTH': CB, 'AUTHORITY': CPu}
+    action_headers = _tx(language, 'action_headers')
+    action_rows    = _tx(language, 'action_rows')
+    phase_labels   = _tx(language, 'phase_labels')
 
-    rh = [Paragraph(t, STYLES['TH']) for t in rdmap[0]]
+    phase_bg = {}
+    phase_tc = {}
+    for ph_key, bg_hex, tc_clr in [
+        (list(phase_labels.keys())[0], '#DCFCE7', CG),
+        (list(phase_labels.keys())[1], '#DBEAFE', CB),
+        (list(phase_labels.keys())[2], '#EDE9FE', CPu),
+    ]:
+        phase_bg[ph_key] = HexColor(bg_hex)
+        phase_tc[ph_key] = tc_clr
+
+    rh = [Paragraph(h, STYLES['TH']) for h in action_headers]
     rrows = [rh]
-    for row in rdmap[1:]:
+    for row in action_rows:
         rrows.append([Paragraph(str(c), S('rt',fontSize=8.5,textColor=CN,
                        alignment=TA_CENTER if i != 2 and i != 3 else TA_LEFT)) for i,c in enumerate(row)])
     pstyles = []
-    for ri, row in enumerate(rdmap[1:], start=1):
+    for ri, row in enumerate(action_rows, start=1):
         ph = row[0]
         pstyles += [('BACKGROUND',(0,ri),(0,ri),phase_bg.get(ph,white)),
                     ('TEXTCOLOR',(0,ri),(0,ri),phase_tc.get(ph,CN)),
@@ -602,17 +941,13 @@ def _action_page(res_name, scores, gaps, persona, language="EN"):
     story.append(rt)
     story.append(Spacer(1, 4*mm))
 
-    story.append(Paragraph("Investment Summary", STYLES['H2']))
-    inv = [
-        ["Service Tier","Monthly","Annual","Expected Impact"],
-        ["Starter  (AI Reviews + Profile)","180 EUR","2,160 EUR","+8-15% booking conversion"],
-        ["Growth   (+ Velocity + Sentiment)","340 EUR","4,080 EUR","+20-30% digital authority"],
-        ["Authority (Full Suite)","480 EUR","5,760 EUR","+35-50% organic traffic"],
-        ["RECOMMENDED FOR THIS RESTAURANT","340 EUR","4,080 EUR","Est. ROI: 4.2x in 12 months"],
-    ]
-    it = Table([[Paragraph(c, STYLES['TH']) for c in inv[0]]] +
+    story.append(Paragraph(_tx(language, 'inv_summary_title'), STYLES['H2']))
+    inv_headers = _tx(language, 'inv_headers')
+    inv_rows    = _tx(language, 'inv_rows')
+
+    it = Table([[Paragraph(c, STYLES['TH']) for c in inv_headers]] +
                [[Paragraph(str(c), S('itc',fontSize=9,textColor=CN,alignment=TA_CENTER if i>0 else TA_LEFT))
-                 for i,c in enumerate(row)] for row in inv[1:]],
+                 for i,c in enumerate(row)] for row in inv_rows],
                colWidths=[62*mm,28*mm,28*mm,57*mm], repeatRows=1)
     it.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,0),CN),
@@ -627,18 +962,19 @@ def _action_page(res_name, scores, gaps, persona, language="EN"):
     story.append(it)
     story.append(Spacer(1, 4*mm))
 
-    story.append(Paragraph("Sales Pitch Scripts", STYLES['H2']))
+    story.append(Paragraph(_tx(language, 'sales_pitch_title'), STYLES['H2']))
     p = persona
-    for lang, label, color, body in [
-        ('EN', 'ENGLISH Opening Hook', CB, p['pitch_en']),
-        ('DE', 'DEUTSCH Verkaufsargument', CT, p['pitch_de']),
+    for lang_tag, label_key, color, body in [
+        ('EN', 'pitch_en_label', CB, p['pitch_en']),
+        ('DE', 'pitch_de_label', CT, p['pitch_de']),
     ]:
+        label = _tx(language, label_key)
         pt = Table([
-            [Paragraph(f"<b>{label}</b>", S(f'pl{lang}',fontName='Helvetica-Bold',fontSize=9,textColor=color))],
-            [Paragraph(body, S(f'pb{lang}',fontSize=9.5,textColor=CN,leading=14,alignment=TA_JUSTIFY))],
+            [Paragraph(f"<b>{label}</b>", S(f'pl{lang_tag}',fontName='Helvetica-Bold',fontSize=9,textColor=color))],
+            [Paragraph(body, S(f'pb{lang_tag}',fontSize=9.5,textColor=CN,leading=14,alignment=TA_JUSTIFY))],
         ], colWidths=[175*mm])
         pt.setStyle(TableStyle([
-            ('BACKGROUND',(0,0),(-1,0),HexColor('#EFF6FF') if lang=='EN' else HexColor('#F0FDFA')),
+            ('BACKGROUND',(0,0),(-1,0),HexColor('#EFF6FF') if lang_tag=='EN' else HexColor('#F0FDFA')),
             ('BACKGROUND',(0,1),(-1,1),white), ('LINEABOVE',(0,0),(-1,0),3,color),
             ('BOX',(0,0),(-1,-1),0.5,CBd),
             ('TOPPADDING',(0,0),(-1,-1),7), ('BOTTOMPADDING',(0,0),(-1,-1),7),
@@ -648,8 +984,6 @@ def _action_page(res_name, scores, gaps, persona, language="EN"):
 
     story.append(HRFlowable(width='100%', thickness=0.5, color=CBd, spaceAfter=2*mm))
     story.append(Paragraph(
-        f"Disclaimer: This brief is for internal Praxiotech sales use only. Benchmarks derived from public "
-        f"Google Maps data. Projected ROI figures are estimates based on comparable client results and are not guaranteed. "
-        f"Prepared {datetime.now().strftime('%B %Y')}.",
+        _tx(language, 'disclaimer', date=datetime.now().strftime('%B %Y')),
         STYLES['Note']))
     return story

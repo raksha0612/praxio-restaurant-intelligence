@@ -2,7 +2,6 @@
 restaurant_chat.py — Restaurant Intelligence Platform
 =======================================================
 Buffered (non-streaming) AI chat for Praxiotech sales reps.
-Modelled on salon_chat.py with restaurant-specific improvements.
 
 Architecture:
   - Structured context block injected into the FIRST user message only
@@ -36,7 +35,7 @@ CALL_NOTES_DIR = Path(__file__).resolve().parent / "scripts" / "data" / "call_no
 
 
 # ─────────────────────────────────────────────────────────────
-# SYSTEM PROMPT
+# SYSTEM PROMPTS
 # ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT_EN = """You are a Praxiotech restaurant intelligence assistant. Praxiotech helps restaurants grow through digital tools: AI review management, Google Business Profile optimisation, review velocity campaigns, sentiment monitoring, and booking infrastructure.
@@ -45,6 +44,8 @@ You have been given a complete data package for a specific restaurant — its di
 
 Answer all questions using only the provided data. Be concise, specific, and commercially focused.
 Your role: help a sales rep understand this restaurant's situation and pitch the right Praxiotech products.
+
+IMPORTANT: You MUST always respond in ENGLISH regardless of the language used in the question.
 
 Rules:
 - Only use facts from the data package provided. Do not invent statistics.
@@ -68,11 +69,14 @@ Follow-up rules:
 - Make them specific to what you just discussed — not generic.
 - Focus on the next commercially useful insight the sales rep needs.
 - Never repeat the question that was just asked.
+- Write all follow-up questions in ENGLISH.
 """
 
 SYSTEM_PROMPT_DE = """Du bist ein Praxiotech Restaurant Intelligence-Assistent. Praxiotech hilft Restaurants zu wachsen durch digitale Tools: KI-Bewertungsverwaltung, Google Business Profile-Optimierung, Bewertungsgeschwindigkeit-Kampagnen, Stimmungsüberwachung und Buchungsinfrastruktur.
 
 Du hast ein vollständiges Datenpaket für ein bestimmtes Restaurant erhalten — seine Dimensionswerte, Benchmark-Vergleiche, Bewertungsstimmung, digitales Profil, Wettbewerbskontext und möglicherweise vorherige Verkaufsanrufnotizen.
+
+WICHTIG: Du MUSST immer auf DEUTSCH antworten, unabhängig davon, in welcher Sprache die Frage gestellt wird.
 
 Beantworte alle Fragen nur anhand der bereitgestellten Daten. Sei prägnant, spezifisch und kommerziell fokussiert.
 Deine Rolle: Unterstütze einen Vertriebsmitarbeiter dabei, die Situation dieses Restaurants zu verstehen und die richtigen Praxiotech-Produkte zu verkaufen.
@@ -85,10 +89,10 @@ Regeln:
 - Formatiere wichtige Zahlen und Empfehlungen deutlich. Verwende Aufzählungen für Listen.
 - Wenn vorherige Anrufnotizen existieren, beziehe dich auf sie (bekannte Einwände, vorherige Diskussionen).
 - Wenn du nach etwas außerhalb der bereitgestellten Daten gefragt wirst: „Ich habe diese Daten nicht in diesem Paket."
-- Halte Antworten auf 200-400 Wörter, es sei denn, es ist längerer Text notwendig.
+- Halte Antworten auf 200-400 Wörter, es sei denn, mehr ist notwendig.
 
 ANSCHLUSSFRAGEN:
-Nach jeder Antwort solltest du genau diesen Block auf einer neuen Zeile hinzufügen:
+Nach jeder Antwort füge genau diesen Block auf einer neuen Zeile hinzu:
 <<<FOLLOWUPS>>>
 1. [Erste Anschlussfrage?]
 2. [Zweite Anschlussfrage?]
@@ -99,38 +103,9 @@ Regeln für Anschlussfragen:
 - Mache sie spezifisch für das, was du gerade besprochen hast — nicht allgemein.
 - Konzentriere dich auf den nächsten kommerziell wertvollen Einblick, den der Vertriebsmitarbeiter benötigt.
 - Wiederhole nie die Frage, die gerade gestellt wurde.
+- Schreibe alle Anschlussfragen auf DEUTSCH.
 """
 
-SYSTEM_PROMPT = """You are a Praxiotech restaurant intelligence assistant. Praxiotech helps restaurants grow through digital tools: AI review management, Google Business Profile optimisation, review velocity campaigns, sentiment monitoring, and booking infrastructure.
-
-You have been given a complete data package for a specific restaurant — its dimension scores, benchmark comparisons, review sentiment, digital profile, competitor context, and any previous sales call notes.
-
-Answer all questions using only the provided data. Be concise, specific, and commercially focused.
-Your role: help a sales rep understand this restaurant's situation and pitch the right Praxiotech products.
-
-Rules:
-- Only use facts from the data package provided. Do not invent statistics.
-- Always tie recommendations to concrete numbers (scores, ratings, response rates).
-- When gaps exist, name the specific Praxiotech product that closes the gap.
-- Use professional but conversational language — this is a sales tool, not a report.
-- Format key numbers and recommendations clearly. Use bullet points for lists.
-- If previous call notes exist, reference them (known objections, prior discussions).
-- If asked something outside the provided data: "I don't have that data in this package."
-- Keep responses 200-400 words unless genuinely more is needed.
-
-FOLLOW-UP QUESTIONS:
-After every response, add exactly this block on a new line:
-<<<FOLLOWUPS>>>
-1. [First follow-up question?]
-2. [Second follow-up question?]
-3. [Third follow-up question?]
-
-Follow-up rules:
-- Each question must be under 80 characters.
-- Make them specific to what you just discussed — not generic.
-- Focus on the next commercially useful insight the sales rep needs.
-- Never repeat the question that was just asked.
-"""
 
 # ─────────────────────────────────────────────────────────────
 # PRODUCT PITCH MAP
@@ -189,10 +164,7 @@ def save_call_notes(restaurant_id: str, call: dict) -> None:
 
 
 def delete_call_note(restaurant_id: str, index: int) -> bool:
-    """Delete a call note by index and persist changes.
-
-    Returns True when deletion succeeded, False if index was invalid.
-    """
+    """Delete a call note by index and persist changes."""
     CALL_NOTES_DIR.mkdir(parents=True, exist_ok=True)
     path = CALL_NOTES_DIR / f"{restaurant_id}.json"
     existing = load_call_notes(restaurant_id)
@@ -410,14 +382,12 @@ def get_response(messages: list, restaurant_context: str, language: str = "EN") 
     try:
         import anthropic
     except ImportError:
-        # If the Anthropic python package is missing, return a helpful message
-        # but avoid exposing any API key provided by the user in the UI.
         return (
             "**Error: Anthropic client library not installed.**\n\n"
             "The app can use Anthropic for AI responses, but the `anthropic` Python package is required.\n"
             "Install it in your environment with:\n"
             "`pip install anthropic httpx`\n\n"
-            "After installing, restart the Streamlit app. You can also paste your API key into the assistant's \"Configure Anthropic API Key\" panel in the app UI."
+            "After installing, restart the Streamlit app."
         )
 
     try:
@@ -442,7 +412,7 @@ def get_response(messages: list, restaurant_context: str, language: str = "EN") 
 
     try:
         # Select language-specific system prompt
-        system_prompt = SYSTEM_PROMPT_DE if language == "DE" else SYSTEM_PROMPT_EN
+        system_prompt = SYSTEM_PROMPT_DE if language.upper() == "DE" else SYSTEM_PROMPT_EN
 
         response = client.messages.create(
             model=MODEL,
@@ -483,10 +453,10 @@ def parse_followups(text: str) -> tuple:
 
 
 # ─────────────────────────────────────────────────────────────
-# SUGGESTED QUESTIONS
+# SUGGESTED QUESTIONS — EN + DE
 # ─────────────────────────────────────────────────────────────
 
-_GAP_QUESTIONS = {
+_GAP_QUESTIONS_EN = {
     "Responsiveness":   "Why is the response rate so low, and what's the revenue impact?",
     "Digital Presence": "What's the impact of missing booking infrastructure?",
     "Reputation":       "How does review volume compare to competitors?",
@@ -494,7 +464,15 @@ _GAP_QUESTIONS = {
     "Intelligence":     "What sentiment themes are driving the current rating?",
 }
 
-_GENERAL_QUESTIONS = [
+_GAP_QUESTIONS_DE = {
+    "Responsiveness":   "Warum ist die Antwortrate so niedrig, und welchen Umsatzeinfluss hat das?",
+    "Digital Presence": "Welche Auswirkungen hat die fehlende Buchungsinfrastruktur?",
+    "Reputation":       "Wie vergleicht sich das Bewertungsvolumen mit Mitbewerbern?",
+    "Visibility":       "Was sagt uns der Aktualitätstrend der Bewertungen?",
+    "Intelligence":     "Welche Stimmungsthemen beeinflussen die aktuelle Bewertung?",
+}
+
+_GENERAL_QUESTIONS_EN = [
     "What objections should I expect, and how do I handle them?",
     "What's the fastest win Praxiotech can deliver here in 30 days?",
     "How should I open this sales conversation?",
@@ -505,48 +483,78 @@ _GENERAL_QUESTIONS = [
     "Which Praxiotech products are the best fit here, and why?",
 ]
 
+_GENERAL_QUESTIONS_DE = [
+    "Welche Einwände sollte ich erwarten, und wie gehe ich damit um?",
+    "Was ist der schnellste Erfolg, den Praxiotech hier in 30 Tagen erzielen kann?",
+    "Wie sollte ich dieses Verkaufsgespräch eröffnen?",
+    "Wenn der Inhaber ein Budget von 200 €/Monat hat, was ist das beste Produkt?",
+    "Gib mir einen Ein-Satz-Pitch, mit dem ich das Gespräch eröffnen kann.",
+    "Was wäre der Jahreswert für Praxiotech, wenn dieser Kunde gewonnen wird?",
+    "Was macht dieses Restaurant besser als seine Top-3-Konkurrenten?",
+    "Welche Praxiotech-Produkte passen hier am besten, und warum?",
+]
 
-def get_suggested_questions(gaps: dict, res_name: str) -> list:
-    """Return first 4 questions for the initial chip row."""
+
+def get_suggested_questions(gaps: dict, res_name: str, language: str = "EN") -> list:
+    """Return first 4 questions for the initial chip row — in the selected language."""
+    is_de = language.upper() == "DE"
+    gap_q = _GAP_QUESTIONS_DE if is_de else _GAP_QUESTIONS_EN
+    gen_q = _GENERAL_QUESTIONS_DE if is_de else _GENERAL_QUESTIONS_EN
+
+    if is_de:
+        summary_q = f"Fassen Sie die 3 wichtigsten Verkaufsargumente für {res_name} zusammen."
+    else:
+        summary_q = f"Summarise the top 3 pitch points for {res_name}."
+
     questions = []
     top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)
     for dim, gap_val in top_gaps:
-        if gap_val > 0 and dim in _GAP_QUESTIONS:
-            questions.append(_GAP_QUESTIONS[dim])
-    questions.append(f"Summarise the top 3 pitch points for {res_name}.")
-    for q in _GENERAL_QUESTIONS:
+        if gap_val > 0 and dim in gap_q:
+            questions.append(gap_q[dim])
+    questions.append(summary_q)
+    for q in gen_q:
         if q not in questions:
             questions.append(q)
     return questions[:4]
 
 
-def get_all_questions(gaps: dict, res_name: str) -> list:
-    """Return full ordered question pool (up to 12)."""
+def get_all_questions(gaps: dict, res_name: str, language: str = "EN") -> list:
+    """Return full ordered question pool (up to 12) — in the selected language."""
+    is_de = language.upper() == "DE"
+    gap_q = _GAP_QUESTIONS_DE if is_de else _GAP_QUESTIONS_EN
+    gen_q = _GENERAL_QUESTIONS_DE if is_de else _GENERAL_QUESTIONS_EN
+
+    if is_de:
+        summary_q = f"Fassen Sie die 3 wichtigsten Verkaufsargumente für {res_name} zusammen."
+    else:
+        summary_q = f"Summarise the top 3 pitch points for {res_name}."
+
     questions = []
     top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)
     for dim, gap_val in top_gaps:
-        if gap_val > 0 and dim in _GAP_QUESTIONS:
-            questions.append(_GAP_QUESTIONS[dim])
-    questions.append(f"Summarise the top 3 pitch points for {res_name}.")
-    for q in _GENERAL_QUESTIONS:
+        if gap_val > 0 and dim in gap_q:
+            questions.append(gap_q[dim])
+    questions.append(summary_q)
+    for q in gen_q:
         if q not in questions:
             questions.append(q)
     return questions[:12]
 
 
-def get_similar_questions(last_question: str, response: str, restaurant_name: str, gaps: dict) -> list:
+def get_similar_questions(last_question: str, response: str, restaurant_name: str, gaps: dict, language: str = "EN") -> list:
     """
     Generate 3 similar/related questions based on the last question and response.
-    Uses Claude to understand context and suggest logical follow-ups distinct from standard followups.
+    Uses Claude to understand context and suggest logical follow-ups.
 
     Args:
         last_question: The user's last question
         response: Claude's response to that question
         restaurant_name: Target restaurant name
         gaps: Gap analysis dict for context
+        language: "EN" or "DE"
 
     Returns:
-        List of 2-3 similar question suggestions
+        List of 2-3 similar question suggestions in the selected language
     """
     import os
     try:
@@ -558,9 +566,27 @@ def get_similar_questions(last_question: str, response: str, restaurant_name: st
     if not api_key:
         return []
 
+    is_de = language.upper() == "DE"
+
     try:
         client = anthropic.Anthropic(api_key=api_key, timeout=__import__('httpx').Timeout(15.0, read=30.0))
-        prompt = f"""You are helping a sales rep dig deeper into insights about restaurant performance.
+
+        if is_de:
+            prompt = f"""Du hilfst einem Vertriebsmitarbeiter, tiefer in Erkenntnisse über die Restaurantleistung einzutauchen.
+
+Restaurant: {restaurant_name}
+Letzte Frage des Vertriebsmitarbeiters: {last_question}
+Claudes Antwort (Auszug): {response[:500]}
+
+Erstelle 3 ähnliche/verwandte Fragen, die der Vertriebsmitarbeiter als nächstes stellen könnte. Diese sollen:
+1. Das gleiche Thema aus einem anderen Blickwinkel untersuchen
+2. Tiefer in nicht vollständig abgedeckte Details eintauchen
+3. Sich von typischen Folgefragen unterscheiden
+
+Formatiere als nummerierte Liste, halte jede unter 100 Zeichen. Schreibe alle Fragen auf DEUTSCH."""
+            system_msg = "Du bist ein Verkaufsexperte, der strategische Folgefragen auf Deutsch generiert. Halte die Fragen spezifisch und umsetzbar."
+        else:
+            prompt = f"""You are helping a sales rep dig deeper into insights about restaurant performance.
 
 Restaurant: {restaurant_name}
 Sales Rep's Last Question: {last_question}
@@ -571,12 +597,13 @@ Generate 3 similar/related questions the sales rep might ask next. These should:
 2. Dig deeper into specifics not fully covered
 3. Be distinct from typical follow-ups (don't just rephrase the response)
 
-Format as numbered list, keep each under 100 chars."""
+Format as numbered list, keep each under 100 chars. Write all questions in ENGLISH."""
+            system_msg = "You are a sales expert helping generate strategic follow-up questions in English. Keep questions specific and actionable."
 
         msg = client.messages.create(
             model=MODEL,
             max_tokens=300,
-            system="You are a sales expert helping generate strategic follow-up questions. Keep questions specific and actionable.",
+            system=system_msg,
             messages=[{"role": "user", "content": prompt}]
         )
         text = msg.content[0].text if msg.content else ""
@@ -597,18 +624,10 @@ Format as numbered list, keep each under 100 chars."""
 def get_next_best_action(res_name: str, call_history: list, scores: dict, gaps: dict) -> str:
     """
     Suggest next best action based on call history and restaurant metrics.
-
-    Logic:
-    - First call: suggest opening pitch based on biggest gap
-    - Follow-up call (3-7 days): gentle reminder + case study
-    - Overdue (7+ days): urgency escalation + limited-time offer
-    - Interested (4-5): push towards close
-    - Uninterested (1-2): reposition or pause
     """
     from datetime import datetime, timedelta
 
     if not call_history:
-        # First contact
         largest_gap = max(gaps.values()) if gaps else 0
         top_gap_dim = max(gaps.items(), key=lambda x: x[1])[0] if gaps else "Responsiveness"
         return f"🎯 OPENING: Lead with {top_gap_dim} gap (${largest_gap:.0f} opportunity). Use this pitch: \"{_PITCH_MAP.get(top_gap_dim, 'See our product catalogue.')}\""
@@ -619,7 +638,6 @@ def get_next_best_action(res_name: str, call_history: list, scores: dict, gaps: 
     interest = last_call.get("interest_level", 2)
     objection = last_call.get("main_objection", "").lower()
 
-    # Determine action by days since + interest
     if days_since > 14:
         if interest >= 4:
             return "🔥 URGENT CLOSE: High interest for 2+ weeks. Send contract + 48hr deadline. This deal is slipping."
@@ -627,7 +645,6 @@ def get_next_best_action(res_name: str, call_history: list, scores: dict, gaps: 
             return "⏰ RE-ENGAGE: 2 weeks passed. Send case study from similar restaurant + ask 'any new budget allocated?'"
         else:
             return "📌 RECONSIDER: Low interest + time passed. Pause this opportunity, mark for Q4 re-approach."
-
     elif days_since > 7:
         if interest >= 4:
             return "🎬 MOVE TO CLOSE: Interest high + week has passed. Schedule product demo + pricing discussion."
@@ -635,16 +652,14 @@ def get_next_best_action(res_name: str, call_history: list, scores: dict, gaps: 
             return "📧 SEND PROOF: Share customer success story matching their gap. Follow up in 3 days."
         else:
             return "💭 REPOSITION: Low interest. Identify real blocker - budget? Wrong product? Schedule brief call to clarify."
-
     elif days_since >= 3:
         if interest >= 4:
             return "✅ CLOSING WINDOW OPEN: Send proposal with flexible terms. Goal: signature within 48 hours."
         elif interest >= 2:
-            return "💡 OVERCOME OBJECTION: They said '{objection}'. Response strategy: show ROI calculation + free trial."
+            return f"💡 OVERCOME OBJECTION: They said '{objection}'. Response strategy: show ROI calculation + free trial."
         else:
             return "🤔 UNDERSTAND HESITATION: Ask direct question: 'What would need to change for this to work?' Listen on next call."
-
-    else:  # First 3 days
+    else:
         if interest >= 4:
             return "🚀 MOMENTUM: Strike while hot. Send proposal today + schedule follow-up for 24 hours."
         elif interest >= 2:
@@ -653,4 +668,3 @@ def get_next_best_action(res_name: str, call_history: list, scores: dict, gaps: 
             return "❓ UNCLEAR SIGNAL: Low interest but engaged. Send thank-you + soft CTA: 'Happy to answer questions.'"
 
     return "No action history to guide - use Opening pitch above."
-

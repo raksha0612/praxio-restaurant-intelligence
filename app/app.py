@@ -246,19 +246,30 @@ if not selected:
     st.warning(t("no_restaurants", st.session_state.language))
     st.stop()
 
-# ── COMPUTE METRICS (using filtered data for rankings/charts, but full df for selected restaurant) ────────────────────────────────────
-# CRITICAL: Always fetch res_data from FULL df_rest, never from df_rest_filtered
-# This ensures selected restaurant's data is always available regardless of filter settings
+# ── COMPUTE METRICS ───────────────────────────────────────────────────────────────
+# CRITICAL RULE:
+#   • All data FOR THE SELECTED RESTAURANT (scores, rank, persona, etc.)
+#     comes from the FULL df_rest — never from df_rest_filtered.
+#     This prevents IndexError when filters exclude the currently selected restaurant.
+#   • df_ranks (filtered) is used ONLY for the Top-10 leaderboard chart display.
+#   • df_ranks_all (unfiltered) is used for cur_rank and any per-restaurant rank lookups.
+
 res_data = df_rest[df_rest["name"] == selected].iloc[0]
 
-scores = compute_dimension_scores(selected, df_rest_filtered, df_rev)
-gaps = get_gap_analysis(scores, benchmarks)
-momentum = compute_momentum(selected, df_rev, df_rest_filtered)
-persona = get_customer_persona(selected, df_rest_filtered, df_rev)
-silent_flag = get_silent_winner_flag(selected, df_rest_filtered)
+scores      = compute_dimension_scores(selected, df_rest, df_rev)
+gaps        = get_gap_analysis(scores, benchmarks)
+momentum    = compute_momentum(selected, df_rev, df_rest)
+persona     = get_customer_persona(selected, df_rest, df_rev)
+silent_flag = get_silent_winner_flag(selected, df_rest)
+
+# Full unfiltered ranks — for cur_rank lookup and silent winners page
+df_ranks_all = compute_all_ranks(df_rest, df_rev)
+cur_rank = int(df_ranks_all[df_ranks_all["name"] == selected]["rank"].values[0])
+
+# Filtered ranks — only for leaderboard display
 df_ranks = compute_all_ranks(df_rest_filtered, df_rev)
-cur_rank = int(df_ranks[df_ranks["name"] == selected]["rank"].values[0])
-total = len(df_ranks)
+total = len(df_ranks_all)  # total is always based on full dataset
+
 deal_prob = calculate_deal_probability(selected, res_data, scores, gaps)
 
 # ── PAGE HEADER ───────────────────────────────────────────────────────────
@@ -372,48 +383,43 @@ if st.session_state.active_page == "dashboard":
         # Get gaps to suggest priorities
         top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        solutions = [
-            {
-                "emoji": "⚡",
-                "title": "Optimize Response Time",
-                "priority": "HIGH",
-                "priority_color": "#DC2626",
-                "desc": "Reduce avg reply to under 2 hours — top revenue lever",
-                "est": f"Est. +{min(int(top_gaps[0][1]*.6), 999)} pts score lift"
-            },
-            {
-                "emoji": "⭐",
-                "title": "Launch Review Campaign",
-                "priority": "MEDIUM",
-                "priority_color": "#F59E0B",
-                "desc": "Target 15 new reviews this quarter via post-visit SMS",
-                "est": "Est. +12% visibility"
-            },
-            {
-                "emoji": "🔗",
-                "title": "Update Google Profile",
-                "priority": "LOW",
-                "priority_color": "#10B981",
-                "desc": "Refresh photos, menu links & booking CTA",
-                "est": "Est. +8% CTR"
-            },
-            {
-                "emoji": "🤖",
-                "title": "AI Review Management",
-                "priority": "HIGH",
-                "priority_color": "#DC2626",
-                "desc": "Automate personalized responses at scale — 120 EUR/mo",
-                "est": "Est. 3x response rate"
-            },
-            {
-                "emoji": "📡",
-                "title": "Sentiment Monitoring",
-                "priority": "MEDIUM",
-                "priority_color": "#F59E0B",
-                "desc": "Real-time alerts for negative reviews across platforms",
-                "est": f"Protect {res_data.get('rating_n', 4.6):.1f}★ rating"
-            }
-        ]
+        solutions_data = {
+            "EN": [
+                {"emoji": "⚡", "title": "Optimize Response Time",  "priority": "HIGH",   "priority_color": "#DC2626",
+                 "desc": "Reduce avg reply to under 2 hours — top revenue lever",
+                 "est": f"Est. +{min(int(top_gaps[0][1]*.6), 999)} pts score lift"},
+                {"emoji": "⭐", "title": "Launch Review Campaign",  "priority": "MEDIUM", "priority_color": "#F59E0B",
+                 "desc": "Target 15 new reviews this quarter via post-visit SMS",
+                 "est": "Est. +12% visibility"},
+                {"emoji": "🔗", "title": "Update Google Profile",   "priority": "LOW",    "priority_color": "#10B981",
+                 "desc": "Refresh photos, menu links & booking CTA",
+                 "est": "Est. +8% CTR"},
+                {"emoji": "🤖", "title": "AI Review Management",    "priority": "HIGH",   "priority_color": "#DC2626",
+                 "desc": "Automate personalized responses at scale — 120 EUR/mo",
+                 "est": "Est. 3x response rate"},
+                {"emoji": "📡", "title": "Sentiment Monitoring",    "priority": "MEDIUM", "priority_color": "#F59E0B",
+                 "desc": "Real-time alerts for negative reviews across platforms",
+                 "est": f"Protect {res_data.get('rating_n', 4.6):.1f}★ rating"},
+            ],
+            "DE": [
+                {"emoji": "⚡", "title": "Antwortzeit optimieren",         "priority": "HOCH",    "priority_color": "#DC2626",
+                 "desc": "Durchschn. Antwortzeit auf unter 2 Stunden senken — wichtigster Umsatzhebel",
+                 "est": f"Est. +{min(int(top_gaps[0][1]*.6), 999)} Punkte Score-Steigerung"},
+                {"emoji": "⭐", "title": "Bewertungskampagne starten",      "priority": "MITTEL",  "priority_color": "#F59E0B",
+                 "desc": "Ziel: 15 neue Bewertungen dieses Quartal via Post-Visit SMS",
+                 "est": "Est. +12% Sichtbarkeit"},
+                {"emoji": "🔗", "title": "Google Profil aktualisieren",    "priority": "NIEDRIG", "priority_color": "#10B981",
+                 "desc": "Fotos, Menülinks & Buchungs-CTA aktualisieren",
+                 "est": "Est. +8% CTR"},
+                {"emoji": "🤖", "title": "KI-Bewertungsmanagement",        "priority": "HOCH",    "priority_color": "#DC2626",
+                 "desc": "Personalisierte Antworten automatisieren — 120 EUR/Mo",
+                 "est": "Est. 3x Antwortrate"},
+                {"emoji": "📡", "title": "Stimmungsüberwachung",           "priority": "MITTEL",  "priority_color": "#F59E0B",
+                 "desc": "Echtzeit-Benachrichtigungen für negative Bewertungen auf allen Plattformen",
+                 "est": f"{res_data.get('rating_n', 4.6):.1f}★ Bewertung schützen"},
+            ],
+        }
+        solutions = solutions_data.get(st.session_state.language, solutions_data["EN"])
 
         for sol in solutions:
             st.markdown(f"""
@@ -587,7 +593,7 @@ elif st.session_state.active_page == "assistant":
                 last_user = next((m for m in reversed(st.session_state.chat_messages) if m["role"] == "user"), None)
                 if last_user and last_ai:
                     with st.spinner("Generating related questions…"):
-                        similar = get_similar_questions(last_user["content"], last_ai["content"][:800], selected, gaps)
+                        similar = get_similar_questions(last_user["content"], last_ai["content"][:800], selected, gaps, language=st.session_state.language)
                     if similar:
                         st.markdown(f"<div style='margin:16px 0 12px;'><p style='font-size:11px;color:#64748B;font-weight:700;margin-bottom:8px'>🔍 {t("similar_questions", st.session_state.language)}</p>", unsafe_allow_html=True)
                         for i, q in enumerate(similar):
@@ -604,7 +610,7 @@ elif st.session_state.active_page == "assistant":
     else:
         # SUGGESTED QUESTIONS (shown only if no messages)
         st.markdown(f'<p style="font-size:11px;color:{MUTED};margin-bottom:8px">💡 {t("suggested_questions", st.session_state.language)}</p>', unsafe_allow_html=True)
-        suggested = get_suggested_questions(gaps, selected)
+        suggested = get_suggested_questions(gaps, selected, language=st.session_state.language)
         for i, q in enumerate(suggested[:4]):
             if st.button(q, key=f"sq_{i}", use_container_width=True):
                 st.session_state.pending_question = q
@@ -762,7 +768,7 @@ elif st.session_state.active_page == "silent_winners":
             try:
                 sw_row = df_rest[df_rest["name"] == sw].iloc[0]
                 sw_scores = compute_dimension_scores(sw, df_rest, df_rev)
-                sw_rank = int(df_ranks[df_ranks["name"] == sw]["rank"].values[0])
+                sw_rank = int(df_ranks_all[df_ranks_all["name"] == sw]["rank"].values[0])
                 opp = calculate_silent_winner_opportunity(sw, df_rest, df_rev)
 
                 sw_data.append({
