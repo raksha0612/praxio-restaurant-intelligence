@@ -84,20 +84,110 @@ html, body, [class*="css"], .stApp {{ font-family: 'Inter', sans-serif !importan
 @keyframes glow {{ 0%, 100% {{ box-shadow: 0 0 10px rgba(14,165,233,0.5); }} 50% {{ box-shadow: 0 0 20px rgba(14,165,233,0.8); }} }}
 @keyframes emojiBounce {{ 0%, 100% {{ transform: scale(1) translateY(0); }} 50% {{ transform: scale(1.25) translateY(-4px); }} }}
 
-/* Fix form label colors - make them dark instead of white */
-label {{ color: {NAVY} !important; font-weight: 600 !important; }}
+/* ── Form labels — always dark ─────────────────────────────────────── */
+label {{ color: {NAVY} !important; font-weight: 600 !important; font-size: 12px !important; }}
 [data-testid="stLabel"] {{ color: {NAVY} !important; }}
 [data-testid="stLabel"] p {{ color: {NAVY} !important; }}
 .stForm label {{ color: {NAVY} !important; }}
 .stForm [data-testid="stLabel"] {{ color: {NAVY} !important; }}
-input[type="date"]::placeholder {{ color: {NAVY} !important; }}
-input[type="text"]::placeholder {{ color: {NAVY} !important; }}
 .stDateInput label {{ color: {NAVY} !important; }}
 .stTextInput label {{ color: {NAVY} !important; }}
 .stSelectbox label {{ color: {NAVY} !important; }}
 .stSlider label {{ color: {NAVY} !important; }}
 .stTextArea label {{ color: {NAVY} !important; }}
 .stMultiSelect label {{ color: {NAVY} !important; }}
+
+/* ── Input / textarea — always readable dark text on white background ─ */
+input[type="text"], input[type="password"], input[type="number"],
+input[type="date"], textarea {{
+    color: {NAVY} !important;
+    background-color: {WHITE} !important;
+    font-size: 12px !important;
+    font-family: 'Inter', sans-serif !important;
+}}
+input::placeholder, textarea::placeholder {{
+    color: #94A3B8 !important;
+    font-size: 12px !important;
+}}
+/* BaseWeb / Streamlit input wrappers */
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea,
+[data-baseweb="base-input"] input {{
+    color: {NAVY} !important;
+    background-color: {WHITE} !important;
+    font-size: 12px !important;
+}}
+[data-baseweb="input"],
+[data-baseweb="base-input"],
+[data-baseweb="textarea"] {{
+    background-color: {WHITE} !important;
+}}
+/* ── Slider — main page only (not sidebar) ─────────────────────────── */
+.main [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {{
+    color: {WHITE} !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+}}
+.main [data-testid="stSlider"] span,
+.main [data-testid="stSlider"] div {{ color: {NAVY} !important; }}
+
+.main .stSlider p {{ color: {NAVY} !important; }}
+
+/* ── Selectbox + Multiselect — white bg, dark text (main area ONLY, not sidebar) ─ */
+.main [data-baseweb="select"] > div,
+.main [data-baseweb="select"] > div:focus-within {{
+    background-color: {WHITE} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 8px !important;
+}}
+.main [data-baseweb="select"] span,
+.main [data-baseweb="select"] div,
+.main [data-baseweb="select"] input,
+.main [data-baseweb="select"] p {{
+    color: {NAVY} !important;
+    background-color: transparent !important;
+}}
+/* Dropdown menu list */
+[data-baseweb="menu"],
+[data-baseweb="popover"] ul,
+[data-baseweb="popover"] li {{
+    background-color: {WHITE} !important;
+    color: {NAVY} !important;
+}}
+[data-baseweb="menu"] li:hover,
+[data-baseweb="menu"] [aria-selected="true"] {{
+    background-color: #EFF6FF !important;
+    color: {NAVY} !important;
+}}
+/* Multiselect selected tag pills */
+.main [data-baseweb="tag"] {{
+    background-color: #E0F2FE !important;
+    color: {NAVY} !important;
+}}
+.main [data-baseweb="tag"] span {{ color: {NAVY} !important; }}
+
+/* Metric labels inside call cards */
+[data-testid="stMetricValue"] {{ color: {NAVY} !important; font-size: 13px !important; }}
+[data-testid="stMetricLabel"] {{ color: {MUTED} !important; font-size: 10px !important; }}
+
+/* ── Red/maroon warning banner override ────────────────────────────── */
+div[data-testid="stAlert"][data-baseweb="notification"] {{
+    background-color: #FEE2E2 !important;
+    border: 1.5px solid #EF4444 !important;
+    border-radius: 10px !important;
+}}
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] span,
+div[data-testid="stAlert"] svg {{
+    color: #991B1B !important;
+    fill: #991B1B !important;
+}}
+/* Also target st.warning specifically */
+[data-testid="stAlert"][kind="warning"] {{
+    background-color: #FEE2E2 !important;
+    border-color: #EF4444 !important;
+}}
+[data-testid="stAlert"][kind="warning"] * {{ color: #991B1B !important; }}
 
 [data-testid="stSidebar"] > div:first-child {{ background: linear-gradient(175deg, {NAVY} 0%, #101d33 100%) !important; border-right: none !important; }}
 [data-testid="stSidebar"] * {{ color: #CBD5E1 !important; }}
@@ -267,8 +357,31 @@ df_ranks_all = compute_all_ranks(df_rest, df_rev)
 cur_rank = int(df_ranks_all[df_ranks_all["name"] == selected]["rank"].values[0])
 
 # Filtered ranks — only for leaderboard display
-df_ranks = compute_all_ranks(df_rest_filtered, df_rev)
+# Guarded: if filters produce 0 restaurants, compute_all_ranks raises KeyError
+try:
+    if len(df_rest_filtered) == 0:
+        df_ranks = pd.DataFrame(columns=["name", "score", "rank"])
+    else:
+        df_ranks = compute_all_ranks(df_rest_filtered, df_rev)
+except Exception as _rank_err:
+    logger.warning(f"compute_all_ranks (filtered) failed: {_rank_err}")
+    df_ranks = pd.DataFrame(columns=["name", "score", "rank"])
+
 total = len(df_ranks_all)  # total is always based on full dataset
+
+# Show a red banner when filters produce no results
+if len(df_rest_filtered) == 0:
+    st.markdown(f"""
+    <div style="background:#FEE2E2;border:1.5px solid #EF4444;border-radius:10px;
+                padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">🚫</span>
+      <div>
+        <span style="font-size:13px;font-weight:700;color:#991B1B">No Results Found</span>
+        <span style="font-size:12px;color:#B91C1C;margin-left:8px">
+          No restaurants match the current Advanced Filters — adjust the sliders to see results.
+        </span>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
 deal_prob = calculate_deal_probability(selected, res_data, scores, gaps)
 
@@ -320,7 +433,7 @@ if st.session_state.active_page == "dashboard":
     # RADAR + GAP
     col_r, col_g = st.columns(2)
     with col_r:
-        st.markdown(f'<div class="section-card"><div class="card-header">⚙️ {t("dimension_radar", st.session_state.language)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card"><div class="card-header"> {t("dimension_radar", st.session_state.language)}</div>', unsafe_allow_html=True)
         dim_labels = ["Reputation","Responsiveness","Digital\nPresence","Intelligence","Visibility"]
         if go is None:
             st.info("Plotly not installed — charts disabled. Install with `pip install plotly` to see visualisations.")
@@ -340,7 +453,7 @@ if st.session_state.active_page == "dashboard":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_g:
-        st.markdown(f'<div class="section-card"><div class="card-header">📊 {t("gap_analysis", st.session_state.language)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card"><div class="card-header"> {t("gap_analysis", st.session_state.language)}</div>', unsafe_allow_html=True)
         for key, score_key, target in [("responsiveness", "Responsiveness", 90), ("market_sentiment", "Intelligence", 75),
                                        ("review_freshness", "Visibility", 70), ("brand_visibility", "Digital Presence", 80),
                                        ("reputation", "Reputation", benchmarks.get("rating",4.4)*20)]:
@@ -362,7 +475,7 @@ if st.session_state.active_page == "dashboard":
     # PERSONA & DEAL PROBABILITY
     col_ai, col_act = st.columns(2)
     with col_ai:
-        st.markdown(f'<div class="section-card"><div class="card-header">👤 {t("customer_insights", st.session_state.language)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card"><div class="card-header">{t("customer_insights", st.session_state.language)}</div>', unsafe_allow_html=True)
         p = persona
         st.markdown(f"""<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94A3B8;margin-bottom:3px">{t("primary_persona", st.session_state.language)}</div>
           <div style="font-size:15px;font-weight:700;color:{NAVY}">{p["primary"]}</div></div>
@@ -378,7 +491,7 @@ if st.session_state.active_page == "dashboard":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_act:
-        st.markdown(f'<div class="section-card"><div class="card-header">💡 {t("actionable_solutions", st.session_state.language)}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-card"><div class="card-header"> {t("actionable_solutions", st.session_state.language)}</div>', unsafe_allow_html=True)
 
         # Get gaps to suggest priorities
         top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -441,7 +554,7 @@ if st.session_state.active_page == "dashboard":
         st.markdown("</div>", unsafe_allow_html=True)
 
     # MOMENTUM
-    st.markdown(f'<div class="section-card"><div class="card-header">📈 {t("momentum", st.session_state.language)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-card"><div class="card-header"> {t("momentum", st.session_state.language)}</div>', unsafe_allow_html=True)
     col_m1, col_m2, col_m3 = st.columns([3,1,1])
     with col_m1:
         if momentum is not None and len(momentum) > 0:
@@ -484,7 +597,7 @@ if st.session_state.active_page == "dashboard":
     st.markdown("</div>", unsafe_allow_html=True)
 
     # TOP 10 RESTAURANTS
-    st.markdown(f'<div class="section-card"><div class="card-header">🏆 {t("top_restaurants", st.session_state.language)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-card"><div class="card-header"> {t("top_restaurants", st.session_state.language)}</div>', unsafe_allow_html=True)
     top_10 = df_ranks.head(10)
     if go is None:
         st.info("Plotly not installed — leaderboard chart unavailable. Install with `pip install plotly`.")
@@ -620,17 +733,25 @@ elif st.session_state.active_page == "assistant":
 # PAGE: CALL NOTES
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.active_page == "notes":
+    import base64
     restaurant_id = selected.lower().replace(" ", "_").replace("-", "_")[:40]
     existing_calls = load_call_notes(restaurant_id)
 
-    st.markdown(f"""<div style="background:{WHITE};border-radius:12px;padding:16px 20px;margin-bottom:20px;border:1px solid {BORDER};box-shadow:0 1px 3px rgba(0,0,0,0.07)">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94A3B8;margin-bottom:4px">📞 SALES CALL NOTES</div>
-      <div style="font-size:16px;font-weight:700;color:{NAVY}">{selected}</div>
-      <div style="font-size:11px;color:{MUTED};margin-top:2px">{len(existing_calls)} call(s) logged</div>
+    # ── Header ──────────────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="background:{WHITE};border-radius:12px;padding:18px 24px;margin-bottom:20px;
+                border:1px solid {BORDER};box-shadow:0 1px 3px rgba(0,0,0,0.07)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;
+                  color:#94A3B8;margin-bottom:4px">📞 SALES CALL NOTES</div>
+      <div style="font-size:18px;font-weight:800;color:{NAVY}">{selected}</div>
+      <div style="font-size:12px;color:{MUTED};margin-top:3px">
+        {len(existing_calls)} call(s) logged &nbsp;·&nbsp;
+        <span style="color:{TEAL};font-weight:600">Active Account</span>
+      </div>
     </div>""", unsafe_allow_html=True)
 
-    # Export buttons
-    col_exp1, col_exp2, _ = st.columns([1, 1, 2])
+    # ── Export / Refresh row ─────────────────────────────────────────────────
+    col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 2])
     with col_exp1:
         if st.button("📊 Export Master Excel", use_container_width=True, key="export_btn"):
             try:
@@ -638,111 +759,230 @@ elif st.session_state.active_page == "notes":
                 call_notes_path = PROJECT_ROOT / "scripts" / "data" / "call_notes"
                 call_notes_path.mkdir(parents=True, exist_ok=True)
                 excel_bytes = export_call_notes_to_excel(call_notes_path)
-                st.download_button("⬇️ Download Excel", data=excel_bytes,
+                st.download_button(
+                    "⬇️ Download Excel", data=excel_bytes,
                     file_name=f"CallNotes_Master_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_excel_btn"
+                )
             except Exception as e:
                 st.error(f"Export Error: {e}")
     with col_exp2:
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Refresh Data", use_container_width=True, key="refresh_notes_btn"):
             st.rerun()
 
-    # Form section
-    st.markdown(f'<div style="font-size:13px;font-weight:700;color:{NAVY};margin:18px 0 12px;padding:12px;background:{TEAL};color:white;border-radius:8px">➕ Log New Call</div>', unsafe_allow_html=True)
-    with st.form("call_form"):
+    # ── Log New Call form ────────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="font-size:13px;font-weight:700;padding:12px 16px;background:linear-gradient(135deg,{TEAL},{TEAL2});
+                color:white;border-radius:10px;margin:20px 0 14px;letter-spacing:0.03em">
+      ➕ Log New Call
+    </div>""", unsafe_allow_html=True)
+
+    with st.form("call_form", clear_on_submit=True):
+        # Section 1: Call Details & Sales Context
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown('<p style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:-10px">Call Details</p>', unsafe_allow_html=True)
-            call_date = st.date_input("Call Date", key="call_date_input")
-            contact_name = st.text_input("Contact Name", placeholder="e.g. Marco Rossi", key="contact_name_input")
-            interest = st.slider("Interest Level", 1, 5, 3, key="interest_input")
-
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">📋 Call Details</p>', unsafe_allow_html=True)
+            call_date      = st.date_input("Call Date", key="call_date_input")
+            contact_name   = st.text_input("Contact Name", placeholder="e.g. Marco Rossi", key="contact_name_input")
+            interest       = st.slider("Interest Level", 1, 5, 3, key="interest_input",
+                                       help="1 = Cold, 3 = Warm, 5 = Hot to close")
         with col2:
-            st.markdown('<p style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:-10px">Sales Context</p>', unsafe_allow_html=True)
-            objection = st.text_input("Main Objection", placeholder="e.g. Budget", key="objection_input")
-            budget = st.text_input("Budget Range", placeholder="e.g. €100-200/mo", key="budget_input")
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">💼 Sales Context</p>', unsafe_allow_html=True)
+            objection  = st.text_input("Main Objection", placeholder="e.g. Budget too high", key="objection_input")
+            budget     = st.text_input("Budget Range", placeholder="e.g. €100–200/mo", key="budget_input")
             confidence = st.slider("Confidence Level (Close %)", 0, 100, 50, 10, key="confidence_input")
 
-        st.markdown("---")
+        st.markdown("<hr style='border:none;border-top:1px solid #E2E8F0;margin:12px 0'>", unsafe_allow_html=True)
+
+        # Section 2: Follow-up & Preparation
         col3, col4 = st.columns(2)
         with col3:
-            st.markdown('<p style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:-10px">Follow-up</p>', unsafe_allow_html=True)
-            next_steps = st.text_input("Next Steps", placeholder="e.g. Send proposal", key="next_steps_input")
-            follow_up_date = st.date_input("Follow-up Date", key="followup_date_input")
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">📅 Follow-up</p>', unsafe_allow_html=True)
+            next_steps      = st.text_input("Next Steps", placeholder="e.g. Send proposal", key="next_steps_input")
+            follow_up_date  = st.date_input("Follow-up Date", key="followup_date_input")
         with col4:
-            st.markdown('<p style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:-10px">Preparation</p>', unsafe_allow_html=True)
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">🧠 Preparation</p>', unsafe_allow_html=True)
             decision_timeline = st.text_input("Decision Timeline", placeholder="e.g. 30 days, Q2 budget", key="timeline_input")
-            competitor_tools = st.text_input("Competitor Tools Mentioned", placeholder="e.g. Google My Business only", key="competitor_input")
+            competitor_tools  = st.text_input("Competitor Tools Mentioned", placeholder="e.g. Google My Business only", key="competitor_input")
 
-        st.markdown("---")
-        st.markdown('<p style="font-size:11px;font-weight:700;color:#1E293B;margin-bottom:8px">📦 Products Discussed</p>', unsafe_allow_html=True)
-        products = st.multiselect("",
-            ["AI Review Manager (120 EUR/mo)", "Review Velocity (80 EUR/mo)", "Profile Optimization (60 EUR/mo)",
-             "Sentiment Monitoring (80 EUR/mo)", "Engagement Booster (60 EUR/mo)", "Full Suite (340 EUR/mo)"],
-            key="products_input", label_visibility="collapsed")
+        st.markdown("<hr style='border:none;border-top:1px solid #E2E8F0;margin:12px 0'>", unsafe_allow_html=True)
 
-        col5, col6 = st.columns(2)
-        with col5:
-            outcome = st.selectbox("Outcome", ["Pending", "Won", "Lost"], key="outcome_input")
-        with col6:
-            st.markdown('<p style="font-size:11px;font-weight:700;color:#64748B;margin-bottom:8px"></p>', unsafe_allow_html=True)
+        # Section 3: Products & Outcome
+        col_prod, col_out = st.columns([2, 1])
+        with col_prod:
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">📦 Products Discussed</p>', unsafe_allow_html=True)
+            products = st.multiselect(
+                "Products",
+                ["AI Review Manager (120 EUR/mo)", "Review Velocity (80 EUR/mo)",
+                 "Profile Optimization (60 EUR/mo)", "Sentiment Monitoring (80 EUR/mo)",
+                 "Engagement Booster (60 EUR/mo)", "Full Suite (340 EUR/mo)"],
+                key="products_input", label_visibility="collapsed"
+            )
+        with col_out:
+            st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">🏁 Outcome</p>', unsafe_allow_html=True)
+            outcome = st.selectbox("Outcome", ["Pending", "Won", "Lost"], key="outcome_input", label_visibility="collapsed")
 
-        notes = st.text_area("Detailed Notes", height=80, placeholder="Key discussion points, objections raised, etc.", key="notes_input")
+        notes = st.text_area("📝 Detailed Notes", height=90,
+                             placeholder="Key discussion points, objections raised, agreements made...",
+                             key="notes_input")
 
-        if st.form_submit_button("💾 Save Call", use_container_width=True):
-            save_call_notes(restaurant_id, {
-                "call_date": str(call_date),
-                "contact_name": contact_name,
-                "interest_level": interest,
-                "main_objection": objection,
-                "budget_range": budget,
-                "confidence_level": confidence,
-                "next_steps": next_steps,
-                "follow_up_date": str(follow_up_date),
-                "decision_timeline": decision_timeline,
-                "competitor_tools": competitor_tools,
-                "products_discussed": products,
-                "outcome": outcome,
-                "notes": notes
-            })
-            st.session_state.chat_context = None
-            st.success(f"✅ Call saved for {selected}")
-            st.rerun()
+        st.markdown("<hr style='border:none;border-top:1px solid #E2E8F0;margin:12px 0'>", unsafe_allow_html=True)
 
-    # Previous calls section at bottom
+        # Section 4: Image Attachments
+        st.markdown(f'<p style="font-size:11px;font-weight:700;color:{TEAL};margin-bottom:4px;text-transform:uppercase;letter-spacing:0.08em">📸 Attach Images (optional)</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size:11px;color:{MUTED};margin-bottom:8px">Upload screenshots, business cards, or any relevant visuals. Included in PDF & Excel export.</p>', unsafe_allow_html=True)
+        uploaded_images = st.file_uploader(
+            "Upload Images",
+            type=["png", "jpg", "jpeg", "webp"],
+            accept_multiple_files=True,
+            key="images_input",
+            label_visibility="collapsed"
+        )
+
+        submitted = st.form_submit_button("💾 Save Call", use_container_width=True)
+
+    # ── Handle form submission OUTSIDE the form ──────────────────────────────
+    if submitted:
+        # Encode uploaded images to base64
+        images_b64 = []
+        if uploaded_images:
+            for img_file in uploaded_images:
+                try:
+                    b64 = base64.b64encode(img_file.read()).decode("utf-8")
+                    images_b64.append({
+                        "filename": img_file.name,
+                        "type":     img_file.type,
+                        "data":     b64,
+                    })
+                except Exception as img_err:
+                    logger.warning(f"Could not encode image {img_file.name}: {img_err}")
+
+        call_record = {
+            "call_date":        str(call_date),
+            "contact_name":     contact_name,
+            "interest_level":   interest,
+            "main_objection":   objection,
+            "budget_range":     budget,
+            "confidence_level": confidence,
+            "next_steps":       next_steps,
+            "follow_up_date":   str(follow_up_date),
+            "decision_timeline": decision_timeline,
+            "competitor_tools": competitor_tools,
+            "products_discussed": products,
+            "outcome":          outcome,
+            "notes":            notes,
+            "images":           images_b64,
+        }
+        save_call_notes(restaurant_id, call_record)
+        st.session_state.chat_context = None
+        img_msg = f" + {len(images_b64)} image(s)" if images_b64 else ""
+        st.success(f"✅ Call saved for {selected}{img_msg}")
+        st.rerun()
+
+    # ── Previous Calls ───────────────────────────────────────────────────────
     if existing_calls:
         st.markdown("---")
-        st.markdown(f'<div style="font-size:13px;font-weight:700;color:white;background:{TEAL};padding:10px 14px;border-radius:8px;margin-bottom:14px">📞 Previous Calls ({len(existing_calls)} total)</div>', unsafe_allow_html=True)
-        for i, call in enumerate(reversed(existing_calls), 1):
-            interest_color = SUCCESS if call.get("interest_level", 0) >= 4 else (WARNING if call.get("interest_level", 0) >= 2 else DANGER)
-            outcome_badge = f"<span style='background:{SUCCESS};color:white;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;margin-left:8px'>{call.get('outcome','—').upper()}</span>" if call.get("outcome") != "Pending" else ""
-            st.markdown(f"""<div style="background:{WHITE};border:1px solid {BORDER};border-radius:10px;padding:14px 18px;margin-bottom:10px">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <span style="font-size:13px;font-weight:700;color:{NAVY}">Call #{len(existing_calls)-i+1} — {call.get('call_date','?')}</span>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <span style="font-size:12px;font-weight:700;color:{interest_color}">Interest: {call.get('interest_level','?')}/5</span>
-                  {outcome_badge}
-                </div>
-              </div>
-              <div style="font-size:12px;color:{NAVY};margin-bottom:6px"><b style="color:#0F172A">Contact:</b> <span style="color:{NAVY}">{call.get('contact_name','—')}</span> | <b style="color:#0F172A">Objection:</b> <span style="color:{NAVY}">{call.get('main_objection','—')}</span> | <b style="color:#0F172A">Budget:</b> <span style="color:{NAVY}">{call.get('budget_range','—')}</span></div>
-              <div style="font-size:12px;color:{NAVY};margin-bottom:6px"><b style="color:#0F172A">Products:</b> <span style="color:{NAVY}">{', '.join(call.get('products_discussed',[])) or '—'}</span> | <b style="color:#0F172A">Next Steps:</b> <span style="color:{NAVY}">{call.get('next_steps','—')}</span></div>
-              {f'<div style="font-size:11px;color:{NAVY};margin-top:8px;background:#F8FAFC;padding:10px;border-radius:6px;border-left:3px solid {TEAL}">{call.get("notes","")}</div>' if call.get("notes") else ""}
-            </div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="font-size:13px;font-weight:700;color:white;background:linear-gradient(135deg,{TEAL},{TEAL2});
+                    padding:11px 16px;border-radius:10px;margin-bottom:16px">
+          📞 Previous Calls &nbsp;
+          <span style="background:rgba(255,255,255,0.25);padding:2px 10px;border-radius:20px;font-size:11px">
+            {len(existing_calls)} total
+          </span>
+        </div>""", unsafe_allow_html=True)
 
-            # Delete button for this call
-            col_delete, col_space = st.columns([1, 5])
-            with col_delete:
-                # Use actual list position as stable key (not affected by length changes)
-                actual_index = len(existing_calls) - i
-                delete_key = f"delete_call_{restaurant_id}_{actual_index}"
-                if st.button(f"🗑️ Delete", key=delete_key, use_container_width=True):
-                    # Use centralized helper to delete and persist the call note
-                    success = delete_call_note(restaurant_id, actual_index)
-                    if success:
-                        st.success("✅ Call deleted")
-                    else:
-                        st.error("Could not delete call — index may be out of range")
-                    st.rerun()
+        for i, call in enumerate(reversed(existing_calls), 1):
+            actual_index  = len(existing_calls) - i
+            interest_val  = call.get("interest_level", 0)
+            outcome_val   = call.get("outcome", "Pending")
+            call_images   = call.get("images", [])
+
+            # Color-coded interest
+            int_color = SUCCESS if interest_val >= 4 else (WARNING if interest_val >= 2 else DANGER)
+            int_stars = "★" * int(interest_val) + "☆" * (5 - int(interest_val))
+
+            # Outcome badge colors
+            out_colors = {"Won": SUCCESS, "Lost": DANGER, "Pending": WARNING}
+            out_color  = out_colors.get(outcome_val, WARNING)
+
+            with st.container():
+                # Card header row
+                c_left, c_right = st.columns([3, 1])
+                with c_left:
+                    st.markdown(
+                        f'<div style="font-size:14px;font-weight:800;color:{NAVY};margin-bottom:2px">'
+                        f'Call #{len(existing_calls) - i + 1} &nbsp;·&nbsp; '
+                        f'<span style="font-weight:500;font-size:12px;color:{MUTED}">{call.get("call_date","?")}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                with c_right:
+                    st.markdown(
+                        f'<div style="text-align:right">'
+                        f'<span style="background:{out_color}22;color:{out_color};border:1px solid {out_color}55;'
+                        f'padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700">'
+                        f'{outcome_val.upper()}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+                # Metrics row
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Contact",  call.get("contact_name", "—") or "—")
+                m2.metric("Interest", f"{int_stars}  {interest_val}/5")
+                m3.metric("Budget",   call.get("budget_range", "—") or "—")
+                m4.metric("Confidence", f"{call.get('confidence_level', '—')}%")
+
+                # Detail rows
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    prods = ", ".join(call.get("products_discussed", [])) or "—"
+                    st.markdown(f'<div style="font-size:11px;color:{NAVY};padding:6px 0">'
+                                f'<b>Objection:</b> {call.get("main_objection","—") or "—"}<br>'
+                                f'<b>Products:</b> {prods}</div>', unsafe_allow_html=True)
+                with col_d2:
+                    st.markdown(f'<div style="font-size:11px;color:{NAVY};padding:6px 0">'
+                                f'<b>Next Steps:</b> {call.get("next_steps","—") or "—"}<br>'
+                                f'<b>Follow-up:</b> {call.get("follow_up_date","—")}</div>', unsafe_allow_html=True)
+
+                # Notes box
+                if call.get("notes"):
+                    st.markdown(
+                        f'<div style="font-size:11px;color:{NAVY};background:#F0F9FF;'
+                        f'border-left:3px solid {TEAL};padding:9px 12px;border-radius:6px;'
+                        f'margin:6px 0 8px;line-height:1.6">'
+                        f'📝 {call["notes"]}</div>',
+                        unsafe_allow_html=True
+                    )
+
+                # Attached images — compact thumbnail grid
+                if call_images:
+                    st.markdown(f'<p style="font-size:10px;font-weight:700;color:{TEAL};margin:4px 0 6px;text-transform:uppercase;letter-spacing:0.08em">📸 Attached Images ({len(call_images)})</p>', unsafe_allow_html=True)
+                    img_cols = st.columns(min(len(call_images), 6))
+                    for ci, img_data in enumerate(call_images):
+                        try:
+                            img_bytes = base64.b64decode(img_data["data"])
+                            with img_cols[ci % 6]:
+                                st.image(img_bytes,
+                                         caption=img_data.get("filename", f"img {ci+1}"),
+                                         width=110)
+                        except Exception:
+                            pass
+
+                # Delete button
+                del_col, _ = st.columns([1, 5])
+                with del_col:
+                    if st.button("🗑️ Delete", key=f"delete_call_{restaurant_id}_{actual_index}", use_container_width=True):
+                        success = delete_call_note(restaurant_id, actual_index)
+                        if success:
+                            st.success("✅ Call deleted")
+                        else:
+                            st.error("Could not delete call — index may be out of range")
+                        st.rerun()
+
+                st.markdown(f'<hr style="border:none;border-top:1px solid {BORDER};margin:12px 0">', unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # PAGE: SILENT WINNERS
