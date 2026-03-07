@@ -546,24 +546,8 @@ elif st.session_state.active_page == "assistant":
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.85);margin-bottom:6px">{t("ai_assistant_header", st.session_state.language)}</div>
       <div style="font-size:18px;font-weight:800;color:white;margin-bottom:3px">{t("ai_assistant_subtitle", st.session_state.language)} <span style="background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:6px;margin-left:6px">{selected}</span></div>
       <div style="font-size:12px;color:rgba(255,255,255,0.8);margin-top:6px;line-height:1.5">{t("ai_assistant_description", st.session_state.language)}</div>
-      <div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:8px">✨ {t("powered_by", st.session_state.language)}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:8px"> {t("powered_by", st.session_state.language)}</div>
     </div>""", unsafe_allow_html=True)
-
-    anth_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not anth_key:
-        with st.expander("Configure Anthropic API Key (optional)", expanded=False):
-            st.markdown("Paste your Anthropic API key here to enable the AI assistant.")
-            api_input = st.text_input("Anthropic API Key", type="password", placeholder="sk-...", key="anthropic_key_input")
-            if st.button("Save API Key", key="save_anthropic_key"):
-                try:
-                    env_path = PROJECT_ROOT / ".env"
-                    existing = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
-                    lines    = [l for l in existing.splitlines() if not l.startswith("ANTHROPIC_API_KEY=")]
-                    lines.append(f"ANTHROPIC_API_KEY={api_input}")
-                    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                    st.success("API key saved to .env — please restart the app.")
-                except Exception as e:
-                    st.error(f"Could not save API key: {e}")
 
     if st.session_state.chat_context is None or st.session_state.get("_chat_restaurant") != selected:
         st.session_state.chat_context     = build_restaurant_context(selected, res_data, scores, gaps, benchmarks, df_rest, df_rev, cur_rank, total, persona, momentum)
@@ -594,7 +578,7 @@ elif st.session_state.active_page == "assistant":
         if last_ai:
             _, followups = parse_followups(last_ai["content"])
             if followups:
-                st.markdown(f"<div style='margin:20px 0 12px;'><p style='font-size:11px;color:#64748B;font-weight:700;margin-bottom:8px'>💬 {t('followup_questions', st.session_state.language)}</p>", unsafe_allow_html=True)
+                st.markdown(f"<div style='margin:20px 0 12px;'><p style='font-size:11px;color:#64748B;font-weight:700;margin-bottom:8px'> {t('followup_questions', st.session_state.language)}</p>", unsafe_allow_html=True)
                 for i, q in enumerate(followups):
                     if st.button(f"💬 {q[:50]}{'...' if len(q)>50 else ''}", key=f"fu_{i}_{hash(q)}", use_container_width=True):
                         st.session_state.pending_question = q
@@ -606,7 +590,7 @@ elif st.session_state.active_page == "assistant":
                     with st.spinner("Generating related questions..."):
                         similar = get_similar_questions(last_user["content"], last_ai["content"][:800], selected, gaps, language=st.session_state.language)
                     if similar:
-                        st.markdown(f"<div style='margin:16px 0 12px;'><p style='font-size:11px;color:#64748B;font-weight:700;margin-bottom:8px'>🔍 {t('similar_questions', st.session_state.language)}</p>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='margin:16px 0 12px;'><p style='font-size:11px;color:#64748B;font-weight:700;margin-bottom:8px'> {t('similar_questions', st.session_state.language)}</p>", unsafe_allow_html=True)
                         for i, q in enumerate(similar):
                             if st.button(f"🔍 {q[:50]}{'...' if len(q)>50 else ''}", key=f"sim_{i}_{hash(q)}", use_container_width=True):
                                 st.session_state.pending_question = q
@@ -617,7 +601,7 @@ elif st.session_state.active_page == "assistant":
             st.session_state.chat_messages = []
             st.rerun()
     else:
-        st.markdown(f'<p style="font-size:11px;color:{MUTED};margin-bottom:8px">💡 {t("suggested_questions", st.session_state.language)}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size:11px;color:{MUTED};margin-bottom:8px"> {t("suggested_questions", st.session_state.language)}</p>', unsafe_allow_html=True)
         suggested = get_suggested_questions(gaps, selected, language=st.session_state.language)
         for i, q in enumerate(suggested[:4]):
             if st.button(q, key=f"sq_{i}", use_container_width=True):
@@ -866,7 +850,7 @@ st.markdown(f"""
     <strong style="color:{NAVY}">{t("realtime_analytics", st.session_state.language)}</strong>
   </p>
   <div style="font-size:10px;color:#94A3B8;margin-top:10px;padding-top:12px;border-top:1px solid {BORDER}">
-    <span style="display:inline-block;margin:0 8px">✨ {t("powered_by_footer", st.session_state.language)}</span>
+    <span style="display:inline-block;margin:0 8px"> {t("powered_by_footer", st.session_state.language)}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)

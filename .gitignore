@@ -4,6 +4,7 @@
 *.xls
 app/data/
 scripts/data/
+.streamlit/secrets.toml
 
 # Secrets
 .env

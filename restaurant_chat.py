@@ -29,8 +29,23 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-MODEL         = os.environ.get("CLAUDE_MODEL", "claude-opus-4-6")
-MAX_TOKENS    = int(os.environ.get("CLAUDE_MAX_TOKENS", "2048"))
+# ── Environment loading (local .env + Streamlit Cloud secrets) ──────────────
+def _get_env(key: str, default: str = "") -> str:
+    """Get config value: os.environ → st.secrets → default."""
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        val = st.secrets.get(key, "")
+        if val:
+            return val
+    except Exception:
+        pass
+    return default
+
+MODEL      = _get_env("CLAUDE_MODEL", "claude-opus-4-6")
+MAX_TOKENS = int(_get_env("CLAUDE_MAX_TOKENS", "2048"))
 CALL_NOTES_DIR = Path(__file__).resolve().parent / "scripts" / "data" / "call_notes"
 
 
@@ -352,6 +367,15 @@ def get_response(messages: list, restaurant_context: str, language: str = "EN") 
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
+    # Fallback 1: Streamlit Cloud secrets (works on hosted deployments)
+    if not api_key:
+        try:
+            import streamlit as st
+            api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            pass
+
+    # Fallback 2: local .env file (works on localhost)
     if not api_key:
         env_file = Path(__file__).resolve().parent.parent / ".env"
         if env_file.exists():
@@ -563,6 +587,15 @@ def get_similar_questions(last_question: str, response: str, restaurant_name: st
         return []
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    # Fallback: Streamlit Cloud secrets
+    if not api_key:
+        try:
+            import streamlit as st
+            api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            pass
+
     if not api_key:
         return []
 
