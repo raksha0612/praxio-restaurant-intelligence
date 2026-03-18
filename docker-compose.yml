@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  restaurant_app:
+    build: .
+    container_name: praxio_restaurant
+    restart: unless-stopped
+    ports:
+      - "8502:8502"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      APP_PASSWORD: ${APP_PASSWORD}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-4-6}
+    volumes:
+      # Persist call notes (JSON files) across container restarts
+      - call_notes:/app/scripts/data/call_notes
+      - app_output:/app/app/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start-period: 20s
+      retries: 3
+
+volumes:
+  call_notes:
+  app_output:

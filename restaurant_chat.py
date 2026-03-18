@@ -45,7 +45,7 @@ def _get_env(key: str, default: str = "") -> str:
     return default
 
 MODEL      = _get_env("CLAUDE_MODEL", "claude-opus-4-6")
-MAX_TOKENS = int(_get_env("CLAUDE_MAX_TOKENS", "2048"))
+MAX_TOKENS = int(_get_env("CLAUDE_MAX_TOKENS", "4096"))
 CALL_NOTES_DIR = Path(__file__).resolve().parent / "scripts" / "data" / "call_notes"
 
 

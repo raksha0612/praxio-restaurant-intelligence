@@ -45,13 +45,25 @@ from scoring_engine import (
 from report_generator import generate_pdf_report
 from restaurant_chat import (
     build_restaurant_context, get_response, get_suggested_questions,
-    get_all_questions, load_call_notes, save_call_notes, parse_followups,
-    get_next_best_action, delete_call_note, get_similar_questions,
+    get_all_questions, parse_followups,
+    get_next_best_action, get_similar_questions,
+)
+from database import (
+    init_db,
+    get_call_notes, save_call_note, delete_call_note_by_index,
+    save_chat_session, load_chat_session, clear_chat_session,
+    save_score_history, get_score_history,
 )
 from translations import t
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
+
+# Initialise DB (creates tables + migrates JSON call notes on first run)
+try:
+    init_db()
+except Exception as _db_init_err:
+    logger.warning("DB init failed (non-fatal): %s", _db_init_err)
 
 
 # ── HELPER FUNCTIONS (defined here so no import needed from scoring_engine) ──
@@ -120,6 +132,22 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ── AUTH ───────────────────────────────────────────────────────────────────
+_APP_PASSWORD = os.environ.get("APP_PASSWORD", "") or (
+    st.secrets.get("APP_PASSWORD", "") if hasattr(st, "secrets") else ""
+)
+
+if _APP_PASSWORD and not st.session_state.get("authenticated"):
+    st.title("PraxioTech · Restaurant Intelligence")
+    pwd = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if pwd == _APP_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+    st.stop()
 
 NAVY, TEAL, TEAL2, BG, WHITE, MUTED, SUCCESS, WARNING, DANGER, BORDER = (
     "#0F172A", "#0EA5E9", "#14B8A6", "#F0F4F8", "#FFFFFF", "#64748B", "#22C55E", "#F59E0B", "#EF4444", "#E2E8F0"
@@ -343,6 +371,22 @@ persona     = get_customer_persona(selected, df_rest, df_rev)
 silent_flag = get_silent_winner_flag(selected, df_rest)
 deal_prob   = calculate_deal_probability(selected, res_data, scores, gaps)
 
+# Derive stable restaurant_id (consistent with call notes lookup)
+restaurant_id = selected.lower().replace(" ", "_").replace("-", "_")[:40]
+
+# Persist score snapshot (builds trend history over time)
+try:
+    save_score_history(restaurant_id, {
+        "composite":    scores.get("Composite", 0),
+        "reputation":   scores.get("Reputation", 0),
+        "responsiveness": scores.get("Responsiveness", 0),
+        "digital":      scores.get("Digital Presence", 0),
+        "visibility":   scores.get("Visibility", 0),
+        "intelligence": scores.get("Intelligence", 0),
+    })
+except Exception as _sh_err:
+    logger.debug("save_score_history non-fatal: %s", _sh_err)
+
 df_ranks_all = compute_all_ranks(df_rest, df_rev)
 cur_rank     = int(df_ranks_all[df_ranks_all["name"] == selected]["rank"].values[0])
 total        = len(df_ranks_all)
@@ -551,7 +595,8 @@ elif st.session_state.active_page == "assistant":
 
     if st.session_state.chat_context is None or st.session_state.get("_chat_restaurant") != selected:
         st.session_state.chat_context     = build_restaurant_context(selected, res_data, scores, gaps, benchmarks, df_rest, df_rev, cur_rank, total, persona, momentum)
-        st.session_state.chat_messages    = []
+        # Load persisted messages from DB (empty list if first time)
+        st.session_state.chat_messages    = load_chat_session(restaurant_id)
         st.session_state._chat_restaurant = selected
 
     user_input = st.chat_input(t("ask_placeholder", st.session_state.language, selected=selected))
@@ -562,6 +607,11 @@ elif st.session_state.active_page == "assistant":
         with st.spinner(t("claude_thinking", st.session_state.language)):
             response = get_response(st.session_state.chat_messages, st.session_state.chat_context, st.session_state.language)
         st.session_state.chat_messages.append({"role": "assistant", "content": response})
+        # Persist to DB after every response
+        try:
+            save_chat_session(restaurant_id, _city or "", st.session_state.chat_messages)
+        except Exception:
+            pass
         st.rerun()
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -599,6 +649,10 @@ elif st.session_state.active_page == "assistant":
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.chat_messages = []
+            try:
+                clear_chat_session(restaurant_id)
+            except Exception:
+                pass
             st.rerun()
     else:
         st.markdown(f'<p style="font-size:11px;color:{MUTED};margin-bottom:8px"> {t("suggested_questions", st.session_state.language)}</p>', unsafe_allow_html=True)
@@ -612,8 +666,7 @@ elif st.session_state.active_page == "assistant":
 # CALL NOTES
 # ============================================================
 elif st.session_state.active_page == "notes":
-    restaurant_id  = selected.lower().replace(" ", "_").replace("-", "_")[:40]
-    existing_calls = load_call_notes(restaurant_id)
+    existing_calls = get_call_notes(restaurant_id)
 
     st.markdown(f"""
     <div style="background:{WHITE};border-radius:12px;padding:18px 24px;margin-bottom:20px;border:1px solid {BORDER};box-shadow:0 1px 3px rgba(0,0,0,0.07)">
@@ -629,17 +682,48 @@ elif st.session_state.active_page == "notes":
     with col_exp1:
         if st.button("📊 Export Master Excel", use_container_width=True, key="export_btn"):
             try:
-                import importlib, sys as _sys
-                # Force fresh load every single time — never use cached version
-                for _mod in list(_sys.modules.keys()):
-                    if "excel_exporter" in _mod:
-                        del _sys.modules[_mod]
-                import excel_exporter as _xls
-                importlib.reload(_xls)
-                call_notes_path = PROJECT_ROOT / "scripts" / "data" / "call_notes"
-                call_notes_path.mkdir(parents=True, exist_ok=True)
-                excel_bytes = _xls.export_call_notes_to_excel(call_notes_path)
-                st.download_button("⬇️ Download Excel", data=excel_bytes,
+                import io, openpyxl
+                from openpyxl.styles import Font, PatternFill, Alignment
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Call Notes"
+                headers = ["Restaurant", "Date", "Contact", "Interest", "Outcome",
+                           "Objection", "Budget", "Confidence", "Products", "Notes"]
+                hf = PatternFill("solid", fgColor="0F172A")
+                for ci, h in enumerate(headers, 1):
+                    cell = ws.cell(row=1, column=ci, value=h)
+                    cell.fill = hf
+                    cell.font = Font(bold=True, color="FFFFFF", size=10)
+                    cell.alignment = Alignment(horizontal="center")
+                # Export ALL restaurants' call notes
+                all_rids = list(set(
+                    p.stem for p in (PROJECT_ROOT / "scripts" / "data" / "call_notes").glob("*.json")
+                )) if (PROJECT_ROOT / "scripts" / "data" / "call_notes").exists() else []
+                row_idx = 2
+                for rid in sorted(all_rids):
+                    notes_list = get_call_notes(rid)
+                    res_display = rid.replace("_", " ").title()
+                    for cn in notes_list:
+                        prods = ", ".join(cn.get("products_discussed", []) or [])
+                        ws.append([
+                            res_display,
+                            cn.get("call_date", ""),
+                            cn.get("contact_name", ""),
+                            cn.get("interest_level", ""),
+                            cn.get("visit_outcome", cn.get("outcome", "")),
+                            cn.get("main_objection", ""),
+                            cn.get("budget_range", ""),
+                            cn.get("confidence", cn.get("confidence_level", "")),
+                            prods,
+                            cn.get("notes", ""),
+                        ])
+                        row_idx += 1
+                for col in ws.columns:
+                    ws.column_dimensions[col[0].column_letter].width = min(
+                        max((len(str(c.value or "")) for c in col), default=0) + 2, 40)
+                buf = io.BytesIO()
+                wb.save(buf)
+                st.download_button("⬇️ Download Excel", data=buf.getvalue(),
                     file_name=f"CallNotes_Master_{datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True, key="dl_excel_btn")
@@ -719,7 +803,7 @@ elif st.session_state.active_page == "notes":
             "products_discussed": products, "outcome": outcome,
             "notes": notes, "images": images_b64,
         }
-        save_call_notes(restaurant_id, call_record)
+        save_call_note(restaurant_id, call_record)
         st.session_state.chat_context = None
         img_msg = f" + {len(images_b64)} image(s)" if images_b64 else ""
         st.success(f"✅ Call saved for {selected}{img_msg}")
@@ -788,7 +872,7 @@ elif st.session_state.active_page == "notes":
                 del_col, _ = st.columns([1, 5])
                 with del_col:
                     if st.button("🗑️ Delete", key=f"delete_call_{restaurant_id}_{actual_index}", use_container_width=True):
-                        success = delete_call_note(restaurant_id, actual_index)
+                        success = delete_call_note_by_index(restaurant_id, actual_index)
                         st.success("✅ Call deleted") if success else st.error("Could not delete call")
                         st.rerun()
 
