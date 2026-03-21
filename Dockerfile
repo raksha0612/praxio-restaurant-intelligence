@@ -17,6 +17,7 @@ RUN uv pip install --system \
     pandas numpy openpyxl python-dotenv python-dateutil httpx psycopg2-binary
 
 # Copy root-level Python modules
+COPY config.py ./
 COPY data_audit.py ./
 COPY restaurant_chat.py ./
 COPY scoring_engine.py ./
