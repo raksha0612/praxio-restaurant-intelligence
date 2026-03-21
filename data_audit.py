@@ -94,7 +94,6 @@ def _resolve_path(filename: str) -> str:
         module_dir / "data" / filename,
         Path(os.environ.get("RESTAURANT_DATA_PATH", "")) if "restaurant" in filename.lower() else Path(""),
         Path(os.environ.get("REVIEWS_DATA_PATH", "")) if "review" in filename.lower() else Path(""),
-        Path("/mount/src/restaurant-intelligence") / filename,
     ]
     for p in candidates:
         if p and p.exists():

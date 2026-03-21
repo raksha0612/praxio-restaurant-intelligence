@@ -8,25 +8,26 @@ set -e
 
 SERVER_IP="${PRAXIO_SERVER_IP:-YOUR_SERVER_IP}"
 REMOTE_DIR="/opt/praxiotech/restaurant-intelligence"
+KEY="$HOME/.ssh/id_ed25519_praxio"
 
 echo "==> Deploying Restaurant Intelligence to $SERVER_IP..."
 
 echo "==> Syncing files..."
-rsync -avz \
+rsync -avz -e "ssh -i $KEY" \
   --exclude '.git' --exclude '.venv' --exclude '__pycache__' \
   --exclude 'scripts/data' --exclude 'app/output' \
   --exclude '.env' --exclude '*.pyc' \
   ./ root@$SERVER_IP:$REMOTE_DIR/
 
 echo "==> Syncing .env file..."
-scp .env root@$SERVER_IP:$REMOTE_DIR/.env
+scp -i $KEY .env root@$SERVER_IP:$REMOTE_DIR/.env
 
 echo "==> Building and starting container..."
-ssh root@$SERVER_IP "cd $REMOTE_DIR && docker compose up -d --build"
+ssh -i $KEY root@$SERVER_IP "cd $REMOTE_DIR && docker compose up -d --build"
 
 echo "==> Waiting for health check..."
 sleep 10
-ssh root@$SERVER_IP "docker compose ps"
+ssh -i $KEY root@$SERVER_IP "cd $REMOTE_DIR && docker compose ps"
 
 echo ""
 echo "==> App running at http://$SERVER_IP:8502"
