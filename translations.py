@@ -39,7 +39,8 @@ TRANSLATIONS = {
         # Navigation buttons
         "btn_dashboard": "📊 Intelligence Dashboard",
         "btn_assistant": "🤖 AI Sales Assistant",
-        "btn_notes": "📋 Call Notes",
+        "btn_notes": "📋 Visit Log",
+        "btn_pipeline": "📈 Sales Pipeline",
         "btn_silent_winners": "🌟 Silent Winners",
 
         # Dashboard - KPIs
@@ -108,55 +109,104 @@ TRANSLATIONS = {
         "clear_chat": "🗑️ Clear Chat",
         "claude_thinking": "Claude is thinking…",
         "generating_questions": "Generating related questions…",
-        "configure_api": "Configure Anthropic API Key (optional)",
-        "api_instructions": "Paste your Anthropic API key here to enable the AI assistant. Keys are saved to the project's .env file.",
-        "api_key_placeholder": "sk-...",
-        "save_api_key": "Save API Key",
-        "api_key_saved": "API key saved to .env — please restart the app.",
-        "api_key_error": "Could not save API key: {}",
         "powered_by": "✨ Powered by Claude AI + Real Octoparse Data",
 
-        # Call Notes
-        "call_notes": "📞 SALES CALL NOTES",
-        "calls_logged": "{} call(s) logged",
+        # Visit Log (Call Notes — updated to match Excel template)
+        "call_notes_header": "📋 VISIT LOG",
+        "calls_logged": "{} visit(s) logged",
+        "active_account": "Active Account",
         "export_excel": "📊 Export Master Excel",
         "refresh_data": "🔄 Refresh Data",
-        "log_new_call": "➕ Log New Call",
-        "call_details": "Call Details",
-        "call_date": "Call Date",
-        "contact_name": "Contact Name",
-        "contact_placeholder": "e.g. Marco Rossi",
-        "interest_level": "Interest Level",
-        "sales_context": "Sales Context",
+        "log_new_visit": "➕ Log New Visit",
+
+        # Visit form sections
+        "section_visit_details": "📋 Visit Details",
+        "section_sales_context": "💼 Sales Context",
+        "section_followup": "📅 Follow-up",
+        "section_reflection": "🧠 Self-Reflection",
+        "section_products": "📦 Products Shown",
+        "section_outcome": "🏁 Outcome",
+        "section_images": "📸 Attach Images (optional)",
+
+        # Visit form fields
+        "visit_date": "Visit Date",
+        "visit_time": "Visit Time (e.g. 14:30)",
+        "city": "City",
+        "district": "District (Stadtteil)",
+        "price_class": "Price Class",
+        "size": "Size",
+        "contact_name": "Contact Person",
+        "contact_placeholder": "e.g. Martin – Waiter, Male, ~40",
+        "contact_gender_age": "Contact Role & Gender",
+        "atmosphere": "Atmosphere on Site",
+        "atmosphere_placeholder": "e.g. Few customers, 2 waiters present",
+        "visit_duration": "Visit Duration",
+        "duration_placeholder": "e.g. 15 min.",
+        "pre_check_needs": "Pre-Check Needs",
+        "pre_check_placeholder": "e.g. No online booking, slow website",
+        "potential_score": "Potential Estimate (1–10)",
+        "interest_level": "Interest Level (1–5)",
         "main_objection": "Main Objection",
-        "objection_placeholder": "e.g. Budget",
+        "objection_placeholder": "e.g. Price too high",
         "budget_range": "Budget Range",
-        "budget_placeholder": "e.g. €100-200/mo",
+        "budget_placeholder": "e.g. €100–200/mo",
         "confidence_level": "Confidence Level (Close %)",
-        "follow_up_section": "Follow-up",
-        "next_steps": "Next Steps",
-        "next_steps_placeholder": "e.g. Send proposal",
+        "next_steps": "Next Steps / Follow-up Plan",
+        "next_steps_placeholder": "e.g. Call back Monday 09:00 to confirm demo",
         "followup_date": "Follow-up Date",
-        "preparation": "Preparation",
         "decision_timeline": "Decision Timeline",
         "timeline_placeholder": "e.g. 30 days, Q2 budget",
         "competitor_tools": "Competitor Tools Mentioned",
         "competitor_placeholder": "e.g. Google My Business only",
-        "products_discussed": "📦 Products Discussed",
-        "outcome": "Outcome",
+        "detailed_notes": "📝 Detailed Notes",
+        "notes_placeholder": "Full visit narrative — what you saw, said, and agreed upon…",
+        "self_reflection": "Self-Reflection (for coaching with Kevin)",
+        "reflection_placeholder": "What went well? What do you need from Kevin? Key learning?",
+        "save_visit": "💾 Save Visit",
+        "visit_saved": "✅ Visit saved for {}",
+        "previous_visits": "📋 Previous Visits ({} total)",
+        "visit_number": "Visit #{} — {}",
+        "delete_visit": "🗑️ Delete",
+        "visit_deleted": "✅ Visit deleted",
+        "delete_error": "Could not delete — index may be out of range",
+        "images_hint": "Upload screenshots, business cards, or any relevant visuals.",
+
+        # Outcome options
         "outcome_pending": "Pending",
+        "outcome_interested": "Interested",
+        "outcome_demo_scheduled": "Demo Scheduled",
+        "outcome_proposal_sent": "Proposal Sent",
         "outcome_won": "Won",
         "outcome_lost": "Lost",
-        "detailed_notes": "Detailed Notes",
-        "notes_placeholder": "Key discussion points, objections raised, etc.",
-        "save_call": "💾 Save Call",
-        "call_saved": "✅ Call saved for {}",
-        "previous_calls": "📞 Previous Calls ({} total)",
-        "call_number": "Call #{} — {}",
-        "interest": "Interest:",
-        "delete_call": "🗑️ Delete",
-        "call_deleted": "✅ Call deleted",
-        "delete_error": "Could not delete call — index may be out of range",
+
+        # Products list
+        "products_discussed": "Products Shown",
+
+        # Sales Pipeline
+        "pipeline_header": "📈 SALES PIPELINE",
+        "pipeline_subtitle": "Opportunity Ranking",
+        "pipeline_desc": "Ranked by opportunity score — biggest gaps + uncontacted leads surface first.",
+        "pipeline_total": "Total Restaurants",
+        "pipeline_uncontacted": "Uncontacted",
+        "pipeline_fresh_leads": "↑ fresh leads",
+        "pipeline_contacted": "Contacted",
+        "pipeline_in_pipeline": "in pipeline",
+        "pipeline_avg_gap": "Avg Score Gap",
+        "pipeline_filter_district": "District",
+        "pipeline_filter_status": "Status",
+        "pipeline_show_top": "Show top",
+        "pipeline_status_all": "All",
+        "pipeline_status_uncontacted": "Uncontacted",
+        "pipeline_status_contacted": "Contacted",
+        "pipeline_opp_score": "opp",
+        "pipeline_download": "⬇️ Download Master Excel (all restaurants + visit notes)",
+        "pipeline_no_booking": "No booking",
+        "pipeline_silent_owner": "Silent winner",
+        "pipeline_on_target": "On target",
+        "pipeline_growth": "Growth",
+        "pipeline_gap": "Gap",
+        "tag_above_avg": "✅ Above Average",
+        "tag_below_avg": "⚠️ Below Average",
 
         # Silent Winners
         "silent_winners_title": "🌟 SILENT WINNERS",
@@ -246,7 +296,8 @@ TRANSLATIONS = {
         # Navigation buttons
         "btn_dashboard": "📊 Intelligenz-Dashboard",
         "btn_assistant": "🤖 KI-Verkaufsassistent",
-        "btn_notes": "📋 Anrufnotizen",
+        "btn_notes": "📋 Besuchsprotokoll",
+        "btn_pipeline": "📈 Vertriebspipeline",
         "btn_silent_winners": "🌟 Stille Gewinner",
 
         # Dashboard - KPIs
@@ -315,55 +366,104 @@ TRANSLATIONS = {
         "clear_chat": "🗑️ Chat löschen",
         "claude_thinking": "Claude denkt nach…",
         "generating_questions": "Verwandte Fragen werden generiert…",
-        "configure_api": "Anthropic API-Schlüssel konfigurieren (optional)",
-        "api_instructions": "Geben Sie hier Ihren Anthropic API-Schlüssel ein, um den KI-Assistenten zu aktivieren. Schlüssel werden in der .env-Datei des Projekts gespeichert.",
-        "api_key_placeholder": "sk-...",
-        "save_api_key": "API-Schlüssel speichern",
-        "api_key_saved": "API-Schlüssel in .env gespeichert — bitte starten Sie die App neu.",
-        "api_key_error": "API-Schlüssel konnte nicht gespeichert werden: {}",
         "powered_by": "✨ Powered by Claude AI + Real Octoparse Data",
 
-        # Call Notes
-        "call_notes": "📞 VERKAUFSGESPRÄCHSNOTIZEN",
-        "calls_logged": "{} Anrufe protokolliert",
+        # Visit Log
+        "call_notes_header": "📋 BESUCHSPROTOKOLL",
+        "calls_logged": "{} Besuch(e) protokolliert",
+        "active_account": "Aktiver Account",
         "export_excel": "📊 Master Excel exportieren",
         "refresh_data": "🔄 Daten aktualisieren",
-        "log_new_call": "➕ Neuen Anruf protokollieren",
-        "call_details": "Anruf-Details",
-        "call_date": "Anrufdatum",
-        "contact_name": "Kontaktname",
-        "contact_placeholder": "z.B. Marco Rossi",
-        "interest_level": "Interessensstufe",
-        "sales_context": "Verkaufskontext",
+        "log_new_visit": "➕ Neuen Besuch protokollieren",
+
+        # Visit form sections
+        "section_visit_details": "📋 Besuchsdetails",
+        "section_sales_context": "💼 Verkaufskontext",
+        "section_followup": "📅 Nachverfolgung",
+        "section_reflection": "🧠 Selbstreflexion",
+        "section_products": "📦 Gezeigte Produkte",
+        "section_outcome": "🏁 Ergebnis",
+        "section_images": "📸 Bilder anhängen (optional)",
+
+        # Visit form fields
+        "visit_date": "Besuchsdatum",
+        "visit_time": "Uhrzeit (z.B. 14:30)",
+        "city": "Stadt",
+        "district": "Stadtteil",
+        "price_class": "Preisklasse",
+        "size": "Größe",
+        "contact_name": "Gesprächspartner",
+        "contact_placeholder": "z.B. Martin – Kellner, Männlich, ca. 40 Jahre alt",
+        "contact_gender_age": "Rolle & Geschlecht",
+        "atmosphere": "Stimmung vor Ort",
+        "atmosphere_placeholder": "z.B. Wenige Kunden, 2 Kellner vor Ort",
+        "visit_duration": "Dauer des Gesprächs",
+        "duration_placeholder": "z.B. 15 Min.",
+        "pre_check_needs": "Bedarf Pre-Check",
+        "pre_check_placeholder": "z.B. Keine Online-Buchung, Website lädt langsam",
+        "potential_score": "Einschätzung des Potenzials (1–10)",
+        "interest_level": "Interessensstufe (1–5)",
         "main_objection": "Haupteinwand",
-        "objection_placeholder": "z.B. Budget",
+        "objection_placeholder": "z.B. Budget zu hoch",
         "budget_range": "Budgetbereich",
-        "budget_placeholder": "z.B. €100-200/Monat",
+        "budget_placeholder": "z.B. €100–200/Monat",
         "confidence_level": "Sicherheitsstufe (Abschluss %)",
-        "follow_up_section": "Nachverfolgung",
-        "next_steps": "Nächste Schritte",
-        "next_steps_placeholder": "z.B. Angebot senden",
+        "next_steps": "Nächste Schritte / Follow-up Plan",
+        "next_steps_placeholder": "z.B. Montag 09:00 Telefonat zur Demo-Bestätigung",
         "followup_date": "Nachverfolgungsdatum",
-        "preparation": "Vorbereitung",
         "decision_timeline": "Entscheidungsfrist",
         "timeline_placeholder": "z.B. 30 Tage, Q2-Budget",
         "competitor_tools": "Erwähnte Konkurrenztools",
         "competitor_placeholder": "z.B. Nur Google My Business",
-        "products_discussed": "📦 Besprochene Produkte",
-        "outcome": "Ergebnis",
+        "detailed_notes": "📝 Ausführliche Notizen",
+        "notes_placeholder": "Vollständiger Besuchsbericht – was Sie gesehen, gesagt und vereinbart haben…",
+        "self_reflection": "Selbstreflexion (Basis für Dialog mit Kevin)",
+        "reflection_placeholder": "Was lief gut? Was brauche ich von Kevin? Lerneffekt?",
+        "save_visit": "💾 Besuch speichern",
+        "visit_saved": "✅ Besuch gespeichert für {}",
+        "previous_visits": "📋 Vorherige Besuche ({} gesamt)",
+        "visit_number": "Besuch #{} — {}",
+        "delete_visit": "🗑️ Löschen",
+        "visit_deleted": "✅ Besuch gelöscht",
+        "delete_error": "Löschen fehlgeschlagen — Index außerhalb des Bereichs",
+        "images_hint": "Screenshots, Visitenkarten oder sonstige Bilder hochladen.",
+
+        # Outcome options
         "outcome_pending": "Ausstehend",
+        "outcome_interested": "Interessiert",
+        "outcome_demo_scheduled": "Demo vereinbart",
+        "outcome_proposal_sent": "Angebot gesendet",
         "outcome_won": "Gewonnen",
         "outcome_lost": "Verloren",
-        "detailed_notes": "Detaillierte Notizen",
-        "notes_placeholder": "Wichtige Diskussionspunkte, aufgedeckte Einwände usw.",
-        "save_call": "💾 Anruf speichern",
-        "call_saved": "✅ Anruf für {} gespeichert",
-        "previous_calls": "📞 Vorherige Anrufe ({} gesamt)",
-        "call_number": "Anruf #{} — {}",
-        "interest": "Interesse:",
-        "delete_call": "🗑️ Löschen",
-        "call_deleted": "✅ Anruf gelöscht",
-        "delete_error": "Anruf konnte nicht gelöscht werden — Index ist möglicherweise außerhalb des Bereichs",
+
+        # Products
+        "products_discussed": "Gezeigte Produkte",
+
+        # Sales Pipeline
+        "pipeline_header": "📈 VERTRIEBSPIPELINE",
+        "pipeline_subtitle": "Opportunity-Ranking",
+        "pipeline_desc": "Sortiert nach Opportunity-Score — größte Lücken & unkontaktierte Leads zuerst.",
+        "pipeline_total": "Restaurants gesamt",
+        "pipeline_uncontacted": "Unkontaktiert",
+        "pipeline_fresh_leads": "↑ neue Leads",
+        "pipeline_contacted": "Kontaktiert",
+        "pipeline_in_pipeline": "in Pipeline",
+        "pipeline_avg_gap": "Ø Score-Lücke",
+        "pipeline_filter_district": "Stadtteil",
+        "pipeline_filter_status": "Status",
+        "pipeline_show_top": "Top anzeigen",
+        "pipeline_status_all": "Alle",
+        "pipeline_status_uncontacted": "Unkontaktiert",
+        "pipeline_status_contacted": "Kontaktiert",
+        "pipeline_opp_score": "Opp",
+        "pipeline_download": "⬇️ Master Excel herunterladen (alle Restaurants + Besuchsnotizen)",
+        "pipeline_no_booking": "Kein Booking",
+        "pipeline_silent_owner": "Stiller Gewinner",
+        "pipeline_on_target": "Im Ziel",
+        "pipeline_growth": "Wachstum",
+        "pipeline_gap": "Lücke",
+        "tag_above_avg": "✅ Überdurchschnittlich",
+        "tag_below_avg": "⚠️ Unterdurchschnittlich",
 
         # Silent Winners
         "silent_winners_title": "🌟 STILLE GEWINNER",
@@ -419,29 +519,14 @@ TRANSLATIONS = {
     }
 }
 
+
 def t(key: str, lang: str = "EN", **kwargs) -> str:
-    """
-    Translate a key to the specified language.
-
-    Args:
-        key: Translation key (e.g., "page_title")
-        lang: Language code ("EN" or "DE")
-        **kwargs: Format arguments for string interpolation
-
-    Returns:
-        Translated string
-    """
     if lang not in TRANSLATIONS:
         lang = "EN"
-
     text = TRANSLATIONS[lang].get(key, TRANSLATIONS["EN"].get(key, f"[{key}]"))
-
-    # Handle format strings with kwargs
     if kwargs:
         try:
             return text.format(**kwargs)
         except (KeyError, IndexError):
             return text
-
     return text
-

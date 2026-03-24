@@ -69,6 +69,7 @@ Rules:
 - Use professional but conversational language — this is a sales tool, not a report.
 - Format key numbers and recommendations clearly. Use bullet points for lists.
 - If previous call notes exist, reference them (known objections, prior discussions).
+- If PRE-CALL INTELLIGENCE is present in the data package, factor it into every answer — it is first-hand rep knowledge and may be more current than the data.
 - If asked something outside the provided data: "I don't have that data in this package."
 - Keep responses 200-400 words unless genuinely more is needed.
 
@@ -103,6 +104,7 @@ Regeln:
 - Verwende professionelle, aber umgangssprachliche Sprache — dies ist ein Sales-Tool, kein Bericht.
 - Formatiere wichtige Zahlen und Empfehlungen deutlich. Verwende Aufzählungen für Listen.
 - Wenn vorherige Anrufnotizen existieren, beziehe dich auf sie (bekannte Einwände, vorherige Diskussionen).
+- Wenn PRE-CALL INTELLIGENCE im Datenpaket vorhanden ist, berücksichtige es in jeder Antwort — es sind Ersthand-Informationen des Vertriebsmitarbeiters und können aktueller als die Daten sein.
 - Wenn du nach etwas außerhalb der bereitgestellten Daten gefragt wirst: „Ich habe diese Daten nicht in diesem Paket."
 - Halte Antworten auf 200-400 Wörter, es sei denn, mehr ist notwendig.
 
@@ -234,10 +236,14 @@ def build_restaurant_context(
     total: int,
     persona: dict,
     momentum,
+    pre_call_intel: str = "",
 ) -> str:
     """
     Assemble a structured context block for the target restaurant.
     Injected once into the first user message — Claude holds it in history.
+
+    pre_call_intel: free-text note from the sales rep (what they already know
+    before the call — colleague tips, observations, prior relationship notes, etc.)
     """
     rating    = float(res_data.get("rating_n", 0) or 0)
     rev_count = int(res_data.get("rev_count_n", 0) or 0)
@@ -340,6 +346,14 @@ def build_restaurant_context(
     context = "\n\n".join(parts)
     if call_notes_block:
         context += "\n\n" + call_notes_block
+
+    # Pre-call intelligence — free-text note from the sales rep
+    if pre_call_intel and pre_call_intel.strip():
+        context += (
+            "\n\nPRE-CALL INTELLIGENCE (from sales rep — what they already know):\n"
+            + "  " + pre_call_intel.strip().replace("\n", "\n  ")
+            + "\n  → Treat this as trusted insider context. Reference it when relevant."
+        )
 
     logger.info(
         "Context built for '%s' — %d chars (~%d tokens) | call notes: %s",

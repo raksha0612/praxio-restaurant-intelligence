@@ -1,9 +1,24 @@
+"""
+excel_exporter.py — Restaurant Intelligence Platform
+=====================================================
+Exports visit notes from the DATABASE (SQLite or PostgreSQL) — NOT from JSON files.
+
+Called by app.py via export_visit_notes_to_excel().
+Produces a multi-sheet workbook matching the Vertriebsreporting_Kundenbesuche template.
+
+Sheets:
+  1. Visit Notes  — one row per visit, all fields, matches Excel template columns
+  2. Pipeline     — all restaurants ranked by score + contacted status
+  3. Pipeline KPIs — outcome/interest summary stats
+  4. Action Items — upcoming follow-ups sorted by urgency
+  5. Images       — full-size embedded attachments (if any)
+"""
+
 import base64
 import io
 import json
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -11,380 +26,715 @@ from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
+# ── Colour palette ───────────────────────────────────────────────────────────
 TEAL       = "0EA5E9"
 TEAL2      = "14B8A6"
 NAVY       = "0F172A"
+NAVY2      = "1E293B"
 GRAY       = "64748B"
-LIGHT      = "F0F9FF"
+LIGHT_BLUE = "F0F9FF"
+ALT_ROW    = "F8FAFC"
 BORDER_CLR = "E2E8F0"
+GREEN_BG   = "DCFCE7"; GREEN_FG = "166534"
+RED_BG     = "FEE2E2"; RED_FG   = "991B1B"
+AMBER_BG   = "FEF3C7"; AMBER_FG = "92400E"
 
-def export_call_notes_to_excel(call_notes_dir: Path) -> bytes:
-    call_notes_dir.mkdir(parents=True, exist_ok=True)
-    all_calls = []
-    restaurant_data = {}
-    if call_notes_dir.exists():
-        for json_file in call_notes_dir.glob("*.json"):
-            try:
-                data = json.loads(json_file.read_text(encoding="utf-8"))
-                rest_id = json_file.stem
-                calls = data.get("calls", [])
-                for call in calls:
-                    call["restaurant_id"] = rest_id
-                    call["restaurant_name"] = rest_id.replace("_", " ").title()
-                    all_calls.append(call)
-                restaurant_data[rest_id] = {
-                    "total_calls": len(calls),
-                    "avg_interest": sum(c.get("interest_level", 0) for c in calls) / len(calls) if calls else 0,
-                    "last_call": calls[-1].get("call_date", "N/A") if calls else "N/A",
-                }
-            except Exception as e:
-                logger.warning(f"Error loading {json_file}: {e}")
 
-    wb = Workbook()
-    wb.remove(wb.active)
-    image_anchors = _create_images_sheet(wb, all_calls)
-    _create_call_log_sheet(wb, all_calls, image_anchors)
-    _create_pipeline_sheet(wb, all_calls, restaurant_data)
-    _create_product_sheet(wb, all_calls)
-    _create_action_items_sheet(wb, all_calls)
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output.getvalue()
+# ── Style helpers ────────────────────────────────────────────────────────────
 
-def _b(clr=BORDER_CLR):
+def _fill(clr: str) -> PatternFill:
+    return PatternFill(start_color=clr, end_color=clr, fill_type="solid")
+
+
+def _border(clr: str = BORDER_CLR) -> Border:
     s = Side(style="thin", color=clr)
     return Border(left=s, right=s, top=s, bottom=s)
 
-def _f(clr):
-    return PatternFill(start_color=clr, end_color=clr, fill_type="solid")
 
-def _std_border():
-    return _b()
-
-def _header_style(cell, bg=TEAL):
-    cell.fill = _f(bg)
+def _hdr(cell, bg: str = TEAL) -> None:
+    cell.fill = _fill(bg)
     cell.font = Font(bold=True, color="FFFFFF", size=10, name="Calibri")
     cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    cell.border = _b()
+    cell.border = _border()
 
-def _section_title(ws, cell_addr, text, merge_to=None, bg=NAVY):
-    ws[cell_addr] = text
-    ws[cell_addr].font = Font(bold=True, size=13, color="FFFFFF", name="Calibri")
-    ws[cell_addr].fill = _f(bg)
-    ws[cell_addr].alignment = Alignment(horizontal="left", vertical="center")
-    if merge_to:
-        ws.merge_cells(f"{cell_addr}:{merge_to}")
 
-def _create_images_sheet(wb, calls):
+def _cell(ws, row: int, col: int, val="", bg: str = "FFFFFF", fg: str = NAVY,
+          bold: bool = False, sz: int = 9, h: str = "left", v: str = "center",
+          wrap: bool = False) -> object:
+    c = ws.cell(row=row, column=col, value=val)
+    c.font = Font(bold=bold, size=sz, color=fg, name="Calibri")
+    c.fill = _fill(bg)
+    c.alignment = Alignment(horizontal=h, vertical=v, wrap_text=wrap)
+    c.border = _border()
+    return c
+
+
+def _merge(ws, row: int, c1: int, c2: int, val="", bg: str = "FFFFFF",
+           fg: str = NAVY, bold: bool = False, sz: int = 9,
+           h: str = "left", v: str = "center", wrap: bool = False) -> object:
+    ws.merge_cells(
+        f"{get_column_letter(c1)}{row}:{get_column_letter(c2)}{row}"
+    )
+    return _cell(ws, row, c1, val, bg, fg, bold, sz, h, v, wrap)
+
+
+def _section_hdr(ws, row: int, cols: int, text: str, bg: str = NAVY) -> None:
+    ws.merge_cells(f"A{row}:{get_column_letter(cols)}{row}")
+    c = ws.cell(row=row, column=1, value=text)
+    c.font = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    c.fill = _fill(bg)
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[row].height = 26
+
+
+def _kw(date_str: str) -> str:
+    """Return 'KW XX' from a date string, or empty string."""
+    if not date_str:
+        return ""
+    try:
+        return f"KW {datetime.strptime(str(date_str)[:10], '%Y-%m-%d').isocalendar()[1]}"
+    except Exception:
+        return ""
+
+
+def _safe_date(date_str: str) -> datetime:
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(str(date_str)[:10], fmt)
+        except Exception:
+            pass
+    return datetime(1900, 1, 1)
+
+
+# ── Main entry point ─────────────────────────────────────────────────────────
+
+def export_visit_notes_to_excel(
+    lang: str = "EN",
+    df_rest=None,
+    df_rev=None,
+    df_ranks_all=None,
+    compute_scores_fn=None,
+    find_col_fn=None,
+) -> bytes:
+    """
+    Build the master Excel workbook from the DATABASE.
+
+    Parameters
+    ----------
+    lang            : "EN" or "DE"
+    df_rest         : restaurants DataFrame (for Pipeline sheet)
+    df_rev          : reviews DataFrame (for Pipeline sheet)
+    df_ranks_all    : pre-computed rank DataFrame
+    compute_scores_fn : callable(name, df_rest, df_rev) → scores dict
+    find_col_fn     : callable(df, candidates) → col name or None
+    """
+    # Import DB functions here so the module can be imported without the full app context
+    from database import get_call_notes, get_all_restaurants_with_notes
+
+    all_rids = get_all_restaurants_with_notes()
+
+    # Build flat list of all visits from DB
+    all_visits = []
+    for rid in sorted(all_rids):
+        notes = get_call_notes(rid)
+        display_name = rid.replace("_", " ").title()
+        for note in notes:
+            note["_restaurant_id"]   = rid
+            note["_restaurant_name"] = display_name
+            all_visits.append(note)
+
+    # Sort newest first
+    all_visits.sort(key=lambda x: _safe_date(
+        x.get("visit_date") or x.get("call_date", "")
+    ), reverse=True)
+
+    wb = Workbook()
+    wb.remove(wb.active)  # remove default sheet
+
+    # Build sheets
+    _sheet_visit_notes(wb, all_visits, lang)
+    _sheet_pipeline(wb, all_visits, lang, df_rest, df_rev, df_ranks_all,
+                    compute_scores_fn, find_col_fn)
+    _sheet_kpis(wb, all_visits, lang)
+    _sheet_action_items(wb, all_visits, lang)
+    _sheet_images(wb, all_visits, lang)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+# ── Sheet 1: Visit Notes ─────────────────────────────────────────────────────
+
+def _sheet_visit_notes(wb: Workbook, visits: list, lang: str) -> None:
+    """
+    One row per visit. Columns exactly match Vertriebsreporting_Kundenbesuche.xlsx.
+    """
+    is_de = lang.upper() == "DE"
+    sheet_name = "Besuchsnotizen" if is_de else "Visit Notes"
+    ws = wb.create_sheet(sheet_name)
+    ws.sheet_view.showGridLines = False
+
+    # Column definitions: (header_EN, header_DE, db_key, width)
+    COLS = [
+        ("KW",                                  "KW",                                   "_kw",              7),
+        ("Restaurant",                          "Kunde",                                "_restaurant_name", 28),
+        ("Visit Date",                          "Besuchsdatum",                         "visit_date",       14),
+        ("Time",                                "Uhrzeit",                              "visit_time",       10),
+        ("City",                                "Stadt",                                "city",             14),
+        ("District",                            "Stadtteil",                            "district",         14),
+        ("Price Class",                         "Preisklasse",                          "price_class",      12),
+        ("Size",                                "Größe",                                "size",             12),
+        ("Contact Person",                      "Gesprächspartner",                     "contact_name",     24),
+        ("Atmosphere on Site",                  "Stimmung vor Ort",                     "atmosphere",       26),
+        ("Visit Duration",                      "Dauer des Gesprächs",                  "visit_duration",   14),
+        ("Pre-Check Needs",                     "Bedarf Pre-Check",                     "pre_check_needs",  30),
+        ("Potential Estimate (1-10)",            "Einschätzung des Potenzials (1-10)",   "potential_score",  14),
+        ("Interest Level (1-5)",                "Interessensstufe (1-5)",               "interest_level",   14),
+        ("Products Shown",                      "Gezeigte Produkte",                    "_products",        30),
+        ("Outcome",                             "Ergebnis",                             "visit_outcome",    16),
+        ("Next Steps / Follow-up Plan",         "Geplantes Follow up",                  "next_steps",       30),
+        ("Follow-up Date",                      "Nachverfolgungsdatum",                 "followup_date",    14),
+        ("Detailed Notes",                      "Ausführliche Notizen",                 "notes",            50),
+        ("Self-Reflection (for Kevin)",         "Selbstreflexion (Basis für Dialog mit Kevin)", "self_reflection", 50),
+        ("Main Objection",                      "Haupteinwand",                         "main_objection",   24),
+        ("Budget Range",                        "Budget",                               "budget_range",     16),
+        ("Confidence Level (Close %)",          "Abschluss-Sicherheit %",               "confidence",       14),
+        ("Decision Timeline",                   "Entscheidungsfrist",                   "decision_timeline",20),
+        ("Competitor Tools Mentioned",          "Konkurrenztools",                      "competitor_tools", 22),
+    ]
+
+    # Title row
+    n_cols = len(COLS)
+    ws.merge_cells(f"A1:{get_column_letter(n_cols)}1")
+    title_text = (
+        f"  🍽️  Praxiotech — {'Besuchsprotokoll' if is_de else 'Visit Log'}   ·   "
+        f"Exported {datetime.now().strftime('%d %b %Y  %H:%M')}   ·   "
+        f"{len(visits)} {'Besuch(e)' if is_de else 'visit(s)'}"
+    )
+    t = ws.cell(row=1, column=1, value=title_text)
+    t.font = Font(bold=True, size=13, color="FFFFFF", name="Calibri")
+    t.fill = _fill(NAVY)
+    t.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[1].height = 34
+
+    # Header row
+    for ci, (hdr_en, hdr_de, _, col_w) in enumerate(COLS, 1):
+        hdr_text = hdr_de if is_de else hdr_en
+        cell = ws.cell(row=2, column=ci, value=hdr_text)
+        _hdr(cell, bg=TEAL)
+        ws.column_dimensions[get_column_letter(ci)].width = col_w
+    ws.row_dimensions[2].height = 30
+
+    # Data rows
+    outcome_colors = {
+        "won":              (GREEN_BG, GREEN_FG),
+        "gewonnen":         (GREEN_BG, GREEN_FG),
+        "lost":             (RED_BG,   RED_FG),
+        "verloren":         (RED_BG,   RED_FG),
+        "demo scheduled":   (LIGHT_BLUE, "0369A1"),
+        "demo vereinbart":  (LIGHT_BLUE, "0369A1"),
+        "proposal sent":    ("EDE9FE", "5B21B6"),
+        "angebot gesendet": ("EDE9FE", "5B21B6"),
+        "interested":       ("FEF9C3", "854D0E"),
+        "interessiert":     ("FEF9C3", "854D0E"),
+    }
+
+    for row_i, visit in enumerate(visits, 3):
+        is_alt = row_i % 2 == 0
+        base_bg = ALT_ROW if is_alt else "FFFFFF"
+        outcome_raw = (visit.get("visit_outcome") or visit.get("outcome") or "Pending").strip()
+        out_bg, out_fg = outcome_colors.get(outcome_raw.lower(), (AMBER_BG, AMBER_FG))
+
+        products_str = ", ".join(
+            visit.get("products_discussed") or []
+        )
+
+        for ci, (_, _, db_key, _) in enumerate(COLS, 1):
+            if db_key == "_kw":
+                val = _kw(visit.get("visit_date") or visit.get("call_date", ""))
+            elif db_key == "_restaurant_name":
+                val = visit.get("_restaurant_name", "")
+            elif db_key == "_products":
+                val = products_str
+            elif db_key == "visit_outcome":
+                val = outcome_raw
+            else:
+                val = visit.get(db_key, "") or ""
+
+            cell = ws.cell(row=row_i, column=ci, value=val)
+            cell.font = Font(size=9, name="Calibri")
+            cell.border = _border()
+            cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+
+            # Colour special columns
+            if db_key == "visit_outcome":
+                cell.fill = _fill(out_bg)
+                cell.font = Font(bold=True, size=9, color=out_fg, name="Calibri")
+            elif db_key in ("notes", "self_reflection"):
+                cell.fill = _fill("FFFBEB" if not is_alt else "FEF9C3")
+            elif db_key == "potential_score":
+                try:
+                    pv = int(val)
+                    bg = GREEN_BG if pv >= 8 else (AMBER_BG if pv >= 5 else RED_BG)
+                    fg = GREEN_FG if pv >= 8 else (AMBER_FG if pv >= 5 else RED_FG)
+                    cell.fill = _fill(bg)
+                    cell.font = Font(bold=True, size=9, color=fg, name="Calibri")
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                except Exception:
+                    cell.fill = _fill(base_bg)
+            elif db_key == "interest_level":
+                try:
+                    iv = int(val)
+                    stars = "★" * iv + "☆" * (5 - iv)
+                    cell.value = f"{stars}  {iv}/5"
+                    bg = GREEN_BG if iv >= 4 else (AMBER_BG if iv >= 2 else RED_BG)
+                    fg = GREEN_FG if iv >= 4 else (AMBER_FG if iv >= 2 else RED_FG)
+                    cell.fill = _fill(bg)
+                    cell.font = Font(bold=True, size=9, color=fg, name="Calibri")
+                except Exception:
+                    cell.fill = _fill(base_bg)
+            else:
+                cell.fill = _fill(base_bg)
+
+        # Row height — taller for note columns
+        ws.row_dimensions[row_i].height = 60
+
+    ws.freeze_panes = "A3"
+
+    # Empty state
+    if not visits:
+        ws.merge_cells(f"A3:{get_column_letter(n_cols)}3")
+        empty = ws.cell(row=3, column=1,
+                        value="No visits logged yet. Use the Visit Log tab to add your first entry.")
+        empty.font = Font(italic=True, size=11, color=GRAY, name="Calibri")
+        empty.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[3].height = 40
+
+
+# ── Sheet 2: Pipeline ────────────────────────────────────────────────────────
+
+def _sheet_pipeline(wb, visits, lang, df_rest, df_rev, df_ranks_all,
+                    compute_scores_fn, find_col_fn):
+    is_de = lang.upper() == "DE"
+    ws = wb.create_sheet("Vertriebspipeline" if is_de else "Pipeline")
+    ws.sheet_view.showGridLines = False
+
+    if df_ranks_all is None or compute_scores_fn is None:
+        # Fallback: simple restaurant list from visit notes
+        from database import get_all_restaurants_with_notes
+        _section_hdr(ws, 1, 6, "  📊  Pipeline — Visit Summary")
+        hdrs = ["Restaurant", "Total Visits", "Last Visit", "Avg Interest", "Last Outcome", "Follow-up Date"]
+        if is_de:
+            hdrs = ["Kunde", "Besuche Gesamt", "Letzter Besuch", "Ø Interesse", "Letztes Ergebnis", "Follow-up Datum"]
+        for ci, h in enumerate(hdrs, 1):
+            _hdr(ws.cell(row=2, column=ci), bg=TEAL)
+            ws.cell(row=2, column=ci).value = h
+            ws.column_dimensions[get_column_letter(ci)].width = [28,14,14,14,20,16][ci-1]
+        ws.row_dimensions[2].height = 22
+
+        from database import get_all_restaurants_with_notes, get_call_notes
+        all_rids = get_all_restaurants_with_notes()
+        row = 3
+        for rid in sorted(all_rids):
+            notes = get_call_notes(rid)
+            if not notes:
+                continue
+            last = notes[-1]
+            avg_int = sum(n.get("interest_level") or 0 for n in notes) / len(notes)
+            bg = ALT_ROW if row % 2 == 0 else "FFFFFF"
+            vals = [
+                rid.replace("_"," ").title(),
+                len(notes),
+                last.get("visit_date") or last.get("call_date",""),
+                f"{avg_int:.1f}/5",
+                last.get("visit_outcome") or last.get("outcome",""),
+                last.get("followup_date",""),
+            ]
+            for ci, v in enumerate(vals, 1):
+                cell = ws.cell(row=row, column=ci, value=v)
+                cell.font = Font(size=9, name="Calibri")
+                cell.fill = _fill(bg)
+                cell.border = _border()
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            row += 1
+        ws.freeze_panes = "A3"
+        return
+
+    from database import get_all_restaurants_with_notes, get_call_notes
+    all_rids_with_notes = set(get_all_restaurants_with_notes())
+
+    _section_hdr(ws, 1, 10,
+                 "  📊  Vertriebspipeline — Opportunity Ranking" if is_de
+                 else "  📊  Sales Pipeline — Opportunity Ranking")
+    hdrs_en = ["Rank","Restaurant","City","Score","Rating","Reviews","Response %","Tag","Contacted","Visits"]
+    hdrs_de = ["Rang","Kunde","Stadt","Score","Bewertung","Rezensionen","Antwortquote","Tag","Kontaktiert","Besuche"]
+    hdrs = hdrs_de if is_de else hdrs_en
+    col_widths = [7, 30, 14, 10, 10, 12, 14, 20, 12, 10]
+
+    for ci, h in enumerate(hdrs, 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        _hdr(cell, bg=TEAL)
+        ws.column_dimensions[get_column_letter(ci)].width = col_widths[ci-1]
+    ws.row_dimensions[1].height = 30
+    ws.row_dimensions[2].height = 22
+
+    row = 3
+    for _, rank_row in df_ranks_all.iterrows():
+        name = rank_row["name"]
+        try:
+            res_row = df_rest[df_rest["name"] == name].iloc[0]
+            s = compute_scores_fn(name, df_rest, df_rev)
+        except Exception:
+            continue
+        rid = name.lower().replace(" ","_").replace("-","_")[:40]
+        is_contacted = rid in all_rids_with_notes
+        n_visits = len(get_call_notes(rid))
+
+        city_val = ""
+        if find_col_fn:
+            dc = find_col_fn(df_rest, ["district"])
+            if dc:
+                city_val = str(res_row.get(dc, ""))
+
+        is_alt = row % 2 == 0
+        base_bg = ALT_ROW if is_alt else "FFFFFF"
+
+        vals = [
+            int(rank_row["rank"]),
+            name,
+            city_val,
+            round(float(s.get("Composite", 0)), 1),
+            round(float(res_row.get("rating_n", 0)), 1),
+            int(res_row.get("rev_count_n", 0)),
+            f"{float(res_row.get('res_rate', 0))*100:.0f}%",
+            "✅ Contacted" if is_contacted else "○ Not contacted",
+            "Yes" if is_contacted else "No",
+            n_visits,
+        ]
+        for ci, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.font = Font(size=9, name="Calibri")
+            cell.border = _border()
+            cell.alignment = Alignment(horizontal="center" if ci != 2 else "left",
+                                       vertical="center")
+            if ci == 8:
+                if is_contacted:
+                    cell.fill = _fill(GREEN_BG)
+                    cell.font = Font(bold=True, size=9, color=GREEN_FG, name="Calibri")
+                else:
+                    cell.fill = _fill(ALT_ROW)
+                    cell.font = Font(size=9, color=GRAY, name="Calibri")
+            else:
+                cell.fill = _fill(base_bg)
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    ws.freeze_panes = "A3"
+
+
+# ── Sheet 3: KPIs ────────────────────────────────────────────────────────────
+
+def _sheet_kpis(wb, visits, lang):
+    is_de = lang.upper() == "DE"
+    ws = wb.create_sheet("KPIs")
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 38
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 16
+
+    _section_hdr(ws, 1, 3,
+                 "  📈  Pipeline KPIs & Auswertung" if is_de
+                 else "  📈  Pipeline KPIs & Summary")
+    ws.merge_cells("A2:C2")
+    sub = ws.cell(row=2, column=1,
+                  value=f"  Exported {datetime.now().strftime('%d %b %Y  %H:%M')}  ·  {len(visits)} visits")
+    sub.font = Font(size=8, color="94A3B8", name="Calibri")
+    sub.fill = _fill(NAVY2)
+    sub.alignment = Alignment(horizontal="left")
+    ws.row_dimensions[2].height = 14
+
+    # Outcome breakdown
+    outcomes = {}
+    for v in visits:
+        o = (v.get("visit_outcome") or v.get("outcome") or "Pending").strip()
+        outcomes[o] = outcomes.get(o, 0) + 1
+
+    interest_vals = [v.get("interest_level") or 0 for v in visits]
+    avg_interest = sum(interest_vals) / len(interest_vals) if interest_vals else 0
+
+    products_count: dict = {}
+    for v in visits:
+        for p in (v.get("products_discussed") or []):
+            products_count[p] = products_count.get(p, 0) + 1
+
+    row = 4
+    kpi_label = "Kennzahl" if is_de else "KPI"
+    val_label  = "Wert" if is_de else "Value"
+    for ci, h in enumerate([kpi_label, val_label], 1):
+        cell = ws.cell(row=row, column=ci, value=h)
+        _hdr(cell, bg=NAVY)
+    ws.row_dimensions[row].height = 22
+    row += 1
+
+    kpis_en = [
+        ("Total Visits Logged",           len(visits),                     "FFFFFF", NAVY),
+        ("Restaurants Contacted",          len(set(v["_restaurant_id"] for v in visits)), "FFFFFF", NAVY),
+        ("Average Interest Level",         f"{avg_interest:.1f} / 5",       "FFFFFF", NAVY),
+        ("High Interest (4-5 ★)",          sum(1 for x in interest_vals if x >= 4), GREEN_BG, GREEN_FG),
+        ("Medium Interest (2-3 ★)",        sum(1 for x in interest_vals if 2 <= x < 4), AMBER_BG, AMBER_FG),
+        ("Low Interest (1 ★)",             sum(1 for x in interest_vals if x == 1), RED_BG, RED_FG),
+        ("Visits with Images",             sum(1 for v in visits if v.get("images")), LIGHT_BLUE, "0369A1"),
+    ]
+    kpis_de = [
+        ("Besuche gesamt",                 len(visits),                     "FFFFFF", NAVY),
+        ("Kontaktierte Restaurants",       len(set(v["_restaurant_id"] for v in visits)), "FFFFFF", NAVY),
+        ("Ø Interessensstufe",             f"{avg_interest:.1f} / 5",       "FFFFFF", NAVY),
+        ("Hohes Interesse (4-5 ★)",        sum(1 for x in interest_vals if x >= 4), GREEN_BG, GREEN_FG),
+        ("Mittleres Interesse (2-3 ★)",    sum(1 for x in interest_vals if 2 <= x < 4), AMBER_BG, AMBER_FG),
+        ("Geringes Interesse (1 ★)",       sum(1 for x in interest_vals if x == 1), RED_BG, RED_FG),
+        ("Besuche mit Bildern",            sum(1 for v in visits if v.get("images")), LIGHT_BLUE, "0369A1"),
+    ]
+    kpis = kpis_de if is_de else kpis_en
+
+    for label, value, bg, fg in kpis:
+        for ci, val in enumerate([label, value], 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.fill = _fill(bg)
+            cell.font = Font(bold=(ci == 1), size=10, color=fg, name="Calibri")
+            cell.alignment = Alignment(horizontal="left" if ci == 1 else "center", vertical="center")
+            cell.border = _border()
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    # Outcome breakdown
+    row += 1
+    _section_hdr(ws, row, 3,
+                 "  🏁  Ergebnisverteilung" if is_de else "  🏁  Outcome Breakdown",
+                 bg=TEAL)
+    row += 1
+    for o, cnt in sorted(outcomes.items(), key=lambda x: x[1], reverse=True):
+        ok = o.lower()
+        if "won" in ok or "gewonnen" in ok:
+            bg, fg = GREEN_BG, GREEN_FG
+        elif "lost" in ok or "verloren" in ok:
+            bg, fg = RED_BG, RED_FG
+        else:
+            bg, fg = AMBER_BG, AMBER_FG
+        pct = f"{cnt/max(len(visits),1)*100:.1f}%"
+        for ci, val in enumerate([o, cnt, pct], 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.fill = _fill(bg)
+            cell.font = Font(bold=(ci == 1), size=10, color=fg, name="Calibri")
+            cell.alignment = Alignment(horizontal="left" if ci == 1 else "center", vertical="center")
+            cell.border = _border()
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    # Product frequency
+    if products_count:
+        row += 1
+        _section_hdr(ws, row, 3,
+                     "  📦  Gezeigte Produkte" if is_de else "  📦  Products Shown Frequency",
+                     bg=TEAL2)
+        row += 1
+        for p, cnt in sorted(products_count.items(), key=lambda x: x[1], reverse=True):
+            for ci, val in enumerate([p, cnt], 1):
+                cell = ws.cell(row=row, column=ci, value=val)
+                cell.fill = _fill(LIGHT_BLUE if row % 2 == 0 else "FFFFFF")
+                cell.font = Font(bold=(ci == 2), size=9,
+                                 color=TEAL if ci == 2 else NAVY, name="Calibri")
+                cell.alignment = Alignment(horizontal="left" if ci == 1 else "center",
+                                           vertical="center")
+                cell.border = _border()
+            ws.row_dimensions[row].height = 16
+            row += 1
+
+
+# ── Sheet 4: Action Items ────────────────────────────────────────────────────
+
+def _sheet_action_items(wb, visits, lang):
+    is_de = lang.upper() == "DE"
+    ws = wb.create_sheet("Aktionen" if is_de else "Action Items")
+    ws.sheet_view.showGridLines = False
+
+    _section_hdr(ws, 1, 6,
+                 "  ⚡  Anstehende Follow-ups — nach Dringlichkeit" if is_de
+                 else "  ⚡  Upcoming Follow-ups — sorted by urgency")
+
+    hdrs_en = ["Restaurant", "Last Visit", "Contact", "Next Steps", "Days Until Due", "Status"]
+    hdrs_de = ["Kunde",      "Letzter Besuch", "Gesprächspartner", "Geplantes Follow up", "Tage bis Fälligkeit", "Status"]
+    hdrs    = hdrs_de if is_de else hdrs_en
+    col_w   = [28, 14, 22, 34, 16, 14]
+
+    for ci, (h, w) in enumerate(zip(hdrs, col_w), 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        _hdr(cell, bg=TEAL)
+        ws.column_dimensions[get_column_letter(ci)].width = w
+    ws.row_dimensions[2].height = 22
+
+    # Group by restaurant, keep last visit per restaurant
+    by_rid: dict = {}
+    for v in visits:
+        rid = v["_restaurant_id"]
+        existing = by_rid.get(rid)
+        if existing is None or _safe_date(v.get("visit_date") or "") > _safe_date(existing.get("visit_date") or ""):
+            by_rid[rid] = v
+
+    today = datetime.now()
+    rows_data = []
+    for rid, last in by_rid.items():
+        fu_date_str = last.get("followup_date", "")
+        if fu_date_str:
+            try:
+                fu_date = _safe_date(fu_date_str)
+                days = (fu_date - today).days
+            except Exception:
+                days = 7
+        else:
+            visit_dt = _safe_date(last.get("visit_date") or last.get("call_date", ""))
+            days = (visit_dt + timedelta(days=7) - today).days
+
+        status = ("OVERDUE" if days < 0 else ("URGENT" if days <= 2 else "PENDING"))
+        if is_de:
+            status = ("ÜBERFÄLLIG" if days < 0 else ("DRINGEND" if days <= 2 else "AUSSTEHEND"))
+
+        rows_data.append((days, last["_restaurant_name"], last, status))
+
+    # Sort: overdue first, then by days ascending
+    rows_data.sort(key=lambda x: x[0])
+
+    row = 3
+    for days, rest_name, last, status in rows_data:
+        if "OVERDUE" in status or "ÜBERFÄLLIG" in status:
+            sbg, sfg = RED_BG, RED_FG
+        elif "URGENT" in status or "DRINGEND" in status:
+            sbg, sfg = AMBER_BG, AMBER_FG
+        else:
+            sbg, sfg = GREEN_BG, GREEN_FG
+
+        base_bg = ALT_ROW if row % 2 == 0 else "FFFFFF"
+        vals = [
+            rest_name,
+            last.get("visit_date") or last.get("call_date", ""),
+            last.get("contact_name", ""),
+            (last.get("next_steps", "") or "")[:80],
+            max(days, 0),
+            status,
+        ]
+        for ci, val in enumerate(vals, 1):
+            cell = ws.cell(row=row, column=ci, value=val)
+            cell.border = _border()
+            cell.alignment = Alignment(wrap_text=True, vertical="center",
+                                       horizontal="left" if ci in (1, 3, 4) else "center")
+            if ci == 6:
+                cell.fill = _fill(sbg)
+                cell.font = Font(bold=True, size=9, color=sfg, name="Calibri")
+            else:
+                cell.fill = _fill(base_bg)
+                cell.font = Font(size=9, name="Calibri")
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    ws.freeze_panes = "A3"
+
+
+# ── Sheet 5: Images ──────────────────────────────────────────────────────────
+
+def _sheet_images(wb, visits, lang):
+    is_de = lang.upper() == "DE"
     try:
         from openpyxl.drawing.image import Image as XLImage
         can_embed = True
     except ImportError:
         can_embed = False
 
-    ws = wb.create_sheet("📸 Images", 0)
+    ws = wb.create_sheet("📸 Bilder" if is_de else "📸 Images")
     ws.sheet_view.showGridLines = False
     ws.column_dimensions["A"].width = 2
     ws.column_dimensions["B"].width = 72
     ws.column_dimensions["C"].width = 2
 
     ws.merge_cells("A1:C1")
-    ws["A1"] = "  📸  Image Gallery — Full Size Attachments"
+    ws["A1"] = ("  📸  Bildergalerie — Vollbild-Anhänge" if is_de
+                else "  📸  Image Gallery — Full Size Attachments")
     ws["A1"].font = Font(bold=True, size=13, color="FFFFFF", name="Calibri")
-    ws["A1"].fill = _f(NAVY)
+    ws["A1"].fill = _fill(NAVY)
     ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[1].height = 34
 
     ws.merge_cells("A2:C2")
-    ws["A2"] = "  Full resolution images. Click thumbnails in Call History to jump here."
+    ws["A2"] = "  Full resolution images from visit notes."
     ws["A2"].font = Font(size=8, color="94A3B8", italic=True, name="Calibri")
-    ws["A2"].fill = _f("1E293B")
+    ws["A2"].fill = _fill(NAVY2)
     ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[2].height = 14
 
-    sorted_calls = sorted(calls, key=lambda x: datetime.strptime(x.get("call_date","1900-01-01"),"%Y-%m-%d"), reverse=True)
-    anchors = {}
     g_row = 4
+    any_images = False
 
-    for call in sorted_calls:
-        rest_id = call.get("restaurant_id","")
-        call_date = call.get("call_date","")
-        rest_name = call.get("restaurant_name","—")
-        for img_idx, img_data in enumerate(call.get("images",[])):
+    for visit in visits:
+        images = visit.get("images") or []
+        if not images:
+            continue
+        any_images = True
+        rest_name  = visit.get("_restaurant_name", "")
+        visit_date = visit.get("visit_date") or visit.get("call_date", "")
+
+        for img_idx, img_data in enumerate(images):
             filename = img_data.get("filename", f"image_{img_idx+1}")
+
             ws.merge_cells(f"A{g_row}:C{g_row}")
-            hdr = ws.cell(row=g_row, column=1, value=f"  📞  {rest_name}  ·  {call_date}  ·  {filename}")
+            hdr = ws.cell(row=g_row, column=1,
+                          value=f"  📍  {rest_name}  ·  {visit_date}  ·  {filename}")
             hdr.font = Font(bold=True, size=10, color="FFFFFF", name="Calibri")
-            hdr.fill = _f(TEAL)
+            hdr.fill = _fill(TEAL)
             hdr.alignment = Alignment(horizontal="left", vertical="center")
             ws.row_dimensions[g_row].height = 22
-            anchors[(rest_id, call_date, img_idx)] = g_row
             g_row += 1
-            if can_embed:
+
+            if can_embed and img_data.get("data"):
                 try:
-                    raw = base64.b64decode(img_data.get("data",""))
+                    raw = base64.b64decode(img_data["data"])
                     xl = XLImage(io.BytesIO(raw))
-                    ratio = min(580/max(xl.width,1), 440/max(xl.height,1))
-                    xl.width = int(xl.width * ratio)
+                    ratio = min(580 / max(xl.width, 1), 440 / max(xl.height, 1))
+                    xl.width  = int(xl.width * ratio)
                     xl.height = int(xl.height * ratio)
                     ws.row_dimensions[g_row].height = int(xl.height * 0.75) + 8
-                    ic = ws.cell(row=g_row, column=2, value="")
-                    ic.fill = _f("F0F9FF")
-                    s = Side(style="medium", color=TEAL)
-                    ic.border = Border(left=s, right=s, top=s, bottom=s)
                     ws.add_image(xl, f"B{g_row}")
                 except Exception as e:
-                    logger.warning(f"Gallery image error: {e}")
+                    logger.warning("Image embed error: %s", e)
+                    ws.cell(row=g_row, column=2,
+                            value=f"[Could not embed: {filename}]").font = Font(
+                        italic=True, size=9, color=GRAY, name="Calibri")
+                    ws.row_dimensions[g_row].height = 20
+            else:
+                ws.cell(row=g_row, column=2,
+                        value=f"[{filename}]").font = Font(
+                    italic=True, size=9, color=GRAY, name="Calibri")
+                ws.row_dimensions[g_row].height = 20
+
             g_row += 2
 
-    if g_row == 4:
+    if not any_images:
         ws.merge_cells("A4:C4")
-        ws["A4"] = "No images attached yet."
+        ws["A4"] = ("Noch keine Bilder angehängt." if is_de
+                    else "No images attached yet.")
         ws["A4"].font = Font(italic=True, size=10, color=GRAY, name="Calibri")
         ws["A4"].alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[4].height = 30
-    return anchors
 
-def _create_call_log_sheet(wb, calls, image_anchors=None):
-    if image_anchors is None:
-        image_anchors = {}
-    try:
-        from openpyxl.drawing.image import Image as XLImage
-        can_embed = True
-    except ImportError:
-        can_embed = False
 
-    ws = wb.create_sheet("📋 Call History", 1)
-    ws.sheet_view.showGridLines = False
+# ── Backward-compat shim so old calls don't crash ───────────────────────────
 
-    # A=spacer B=lbl C=val D=lbl E=val F=lbl G=val H=lbl I=val J=spacer
-    for i, w in enumerate([1.2, 16, 26, 16, 26, 16, 26, 16, 26, 1.2], 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-
-    def sc(row, col, val="", bg="FFFFFF", fg=NAVY, bold=False, sz=9, h="left", v="center", wrap=False, bdr=True):
-        c = ws.cell(row=row, column=col, value=val)
-        c.font = Font(bold=bold, size=sz, color=fg, name="Calibri")
-        c.fill = _f(bg)
-        c.alignment = Alignment(horizontal=h, vertical=v, wrap_text=wrap)
-        if bdr: c.border = _b()
-        return c
-
-    def mc(row, c1, c2, val="", bg="FFFFFF", fg=NAVY, bold=False, sz=9, h="left", v="center", wrap=False):
-        ws.merge_cells(f"{get_column_letter(c1)}{row}:{get_column_letter(c2)}{row}")
-        return sc(row, c1, val, bg, fg, bold, sz, h, v, wrap)
-
-    def lbl(row, col, txt):
-        sc(row, col, txt, bg="F1F5F9", fg="64748B", bold=True, sz=8, h="right")
-
-    # Title
-    mc(1,1,10,"   🍽️  Intelligence Engine v2.0  —  Call History", bg=NAVY, fg="FFFFFF", bold=True, sz=14)
-    ws.row_dimensions[1].height = 36
-    mc(2,1,10, f"   Generated {datetime.now().strftime('%d %b %Y  %H:%M')}   ·   {len(calls)} call(s)   ·   Confidential", bg="1E293B", fg="94A3B8", sz=8)
-    ws.row_dimensions[2].height = 14
-    mc(3,1,10,"   💡  Tip: Click '📸 View Full Size' next to any image to open the Image Gallery sheet.", bg="EFF6FF", fg="0369A1", sz=9)
-    ws.row_dimensions[3].height = 16
-
-    sorted_calls = sorted(calls, key=lambda x: datetime.strptime(x.get("call_date","1900-01-01"),"%Y-%m-%d"), reverse=True)
-    o_cfg = {"won":("DCFCE7","166534"),"lost":("FEE2E2","991B1B"),"pending":("FEF9C3","854D0E")}
-    i_cfg = {"hi":("D1FAE5","065F46"),"mid":("FEF3C7","92400E"),"lo":("FEE2E2","991B1B")}
-    R = 5
-
-    for call in sorted_calls:
-        interest = call.get("interest_level", 0)
-        outcome = call.get("outcome","Pending").lower()
-        rest_id = call.get("restaurant_id","")
-        call_date = call.get("call_date","—")
-        rest_name = call.get("restaurant_name","—")
-        o_bg,o_fg = o_cfg.get(outcome,("FEF9C3","854D0E"))
-        ik = "hi" if interest>=4 else ("mid" if interest>=2 else "lo")
-        i_bg,i_fg = i_cfg[ik]
-        stars = "★"*int(interest)+"☆"*(5-int(interest))
-
-        # Card header — teal bar
-        mc(R,1,10, f"   📞  {rest_name}   ·   {call_date}", bg=TEAL, fg="FFFFFF", bold=True, sz=11)
-        ws.row_dimensions[R].height = 26; R+=1
-
-        # Row 1: Contact | Outcome | Interest | Confidence
-        lbl(R,2,"Contact");    sc(R,3, call.get("contact_name","—") or "—")
-        lbl(R,4,"Outcome");    sc(R,5, call.get("outcome","Pending"), bg=o_bg, fg=o_fg, bold=True, h="center")
-        lbl(R,6,"Interest");   sc(R,7, f"{stars}  {interest}/5", bg=i_bg, fg=i_fg, bold=True)
-        lbl(R,8,"Confidence"); sc(R,9, f"{call.get('confidence_level','—')}%", h="center")
-        ws.row_dimensions[R].height = 20; R+=1
-
-        # Row 2: Budget | Timeline | Competitor | Follow-up
-        lbl(R,2,"Budget");     sc(R,3, call.get("budget_range","—") or "—")
-        lbl(R,4,"Timeline");   sc(R,5, call.get("decision_timeline","—") or "—")
-        lbl(R,6,"Competitor"); sc(R,7, call.get("competitor_tools","—") or "—")
-        lbl(R,8,"Follow-up");  sc(R,9, call.get("follow_up_date","—") or "—")
-        ws.row_dimensions[R].height = 20; R+=1
-
-        # Row 3: Products (full width)
-        lbl(R,2,"Products")
-        mc(R,3,9, ", ".join(call.get("products_discussed",[])) or "—", wrap=True)
-        ws.row_dimensions[R].height = 20; R+=1
-
-        # Row 4: Objection | Next Steps
-        lbl(R,2,"Objection"); mc(R,3,5, call.get("main_objection","—") or "—", wrap=True)
-        lbl(R,6,"Next Steps"); mc(R,7,9, call.get("next_steps","—") or "—", wrap=True)
-        ws.row_dimensions[R].height = 20; R+=1
-
-        # Row 5: Notes — full width, tall, warm bg
-        lbl(R,2,"Notes")
-        nc = mc(R,3,9, call.get("notes","") or "—", bg="FFFBEB", fg="44403C", sz=9, wrap=True, v="top")
-        nc.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
-        ws.row_dimensions[R].height = 60; R+=1
-
-        # Images
-        call_images = call.get("images",[])
-        if call_images:
-            mc(R,2,9, f"  📸  Attached Images  ({len(call_images)} file{'s' if len(call_images)!=1 else ''})", bg="CFFAFE", fg=TEAL, bold=True, sz=9)
-            ws.row_dimensions[R].height = 16; R+=1
-
-            THUMB_W,THUMB_H = 90,68
-            ROW_PTS = int(THUMB_H*0.75)+6
-
-            for img_idx, img_data in enumerate(call_images):
-                col_th = 2+(img_idx%4)*2
-                lbl_c = ws.cell(row=R, column=col_th, value=f"🖼  {img_data.get('filename','img')}")
-                lbl_c.font = Font(bold=True, size=8, color="334155", name="Calibri")
-                lbl_c.fill = _f("F1F5F9"); lbl_c.alignment = Alignment(horizontal="left", vertical="center"); lbl_c.border = _b()
-                gallery_row = image_anchors.get((rest_id, call_date, img_idx), 4)
-                lnk = ws.cell(row=R, column=col_th+1, value="📸 View Full Size ↗")
-                lnk.font = Font(bold=True, size=8, color="0369A1", underline="single", name="Calibri")
-                lnk.fill = _f("DBEAFE"); lnk.alignment = Alignment(horizontal="center", vertical="center"); lnk.border = _b()
-                lnk.hyperlink = f"#'📸 Images'!A{gallery_row}"
-            ws.row_dimensions[R].height = 14; R+=1
-
-            ws.row_dimensions[R].height = ROW_PTS
-            for img_idx, img_data in enumerate(call_images):
-                col_th = 2+(img_idx%4)*2
-                tc = ws.cell(row=R, column=col_th, value="")
-                tc.fill = _f("F0F9FF")
-                s = Side(style="thin", color=TEAL); tc.border = Border(left=s,right=s,top=s,bottom=s)
-                if can_embed:
-                    try:
-                        xl = XLImage(io.BytesIO(base64.b64decode(img_data.get("data",""))))
-                        rat = min(THUMB_W/max(xl.width,1), THUMB_H/max(xl.height,1))
-                        xl.width=int(xl.width*rat); xl.height=int(xl.height*rat)
-                        ws.add_image(xl, f"{get_column_letter(col_th)}{R}")
-                    except Exception as e:
-                        logger.warning(f"Thumb error: {e}")
-            R+=1
-
-        # Separator
-        for ci in range(1,11):
-            ws.cell(row=R, column=ci).fill = _f(TEAL)
-        ws.row_dimensions[R].height = 4; R+=2
-
-    ws.freeze_panes = "A5"
-
-def _create_pipeline_sheet(wb, calls, restaurant_data):
-    ws = wb.create_sheet("📊 Pipeline Summary", 2)
-    ws.sheet_view.showGridLines = False
-    _section_title(ws,"A1","  📊  Sales Pipeline Summary", merge_to="D1")
-    ws.merge_cells("A2:D2"); ws["A2"] = f"Exported {datetime.now().strftime('%d %b %Y')}"
-    ws["A2"].font = Font(size=8,color="94A3B8",name="Calibri"); ws["A2"].fill = _f("1E293B")
-    ws["A2"].alignment = Alignment(horizontal="center"); ws.row_dimensions[1].height=26; ws.row_dimensions[2].height=14
-    ws["A4"] = "Key Performance Indicators"; ws["A4"].font = Font(bold=True,size=11,color=NAVY,name="Calibri")
-    kpis = [
-        ("Total Restaurants with Calls", len(restaurant_data)),
-        ("Total Calls Logged", len(calls)),
-        ("Average Interest Level", round(sum(c.get("interest_level",0) for c in calls)/max(len(calls),1),1)),
-        ("High Interest Calls (4-5)", len([c for c in calls if c.get("interest_level",0)>=4])),
-        ("Medium Interest Calls (2-3)", len([c for c in calls if 2<=c.get("interest_level",0)<4])),
-        ("Low Interest Calls (1)", len([c for c in calls if c.get("interest_level",0)==1])),
-        ("Deals Won", len([c for c in calls if c.get("outcome","").lower()=="won"])),
-        ("Deals Lost", len([c for c in calls if c.get("outcome","").lower()=="lost"])),
-        ("Deals Pending", len([c for c in calls if c.get("outcome","Pending").lower()=="pending"])),
-        ("Calls with Images Attached", len([c for c in calls if c.get("images")])),
-    ]
-    kpi_colors = {"High Interest Calls (4-5)":("DCFCE7","166534"),"Deals Won":("DCFCE7","166534"),"Deals Lost":("FEE2E2","991B1B"),"Low Interest Calls (1)":("FEE2E2","991B1B"),"Calls with Images Attached":(LIGHT,TEAL)}
-    row=5
-    for label,value in kpis:
-        bg,fg = kpi_colors.get(label,("F1F5F9",NAVY))
-        for ci,(col,val) in enumerate(zip(["A","B"],[label,value]),1):
-            cell=ws[f"{col}{row}"]; cell.value=val
-            cell.font=Font(bold=(ci==1),size=10,color=fg,name="Calibri"); cell.fill=_f(bg)
-            cell.alignment=Alignment(horizontal="center" if ci==2 else "left",vertical="center"); cell.border=_b()
-        ws.row_dimensions[row].height=18; row+=1
-    row+=1
-    ws.merge_cells(f"A{row}:D{row}"); ws[f"A{row}"]="  Outcome Distribution"
-    ws[f"A{row}"].font=Font(bold=True,size=11,color="FFFFFF",name="Calibri"); ws[f"A{row}"].fill=_f(TEAL2)
-    ws[f"A{row}"].alignment=Alignment(horizontal="left",vertical="center"); ws.row_dimensions[row].height=20; row+=1
-    for ol,bg,fg in [("Won","DCFCE7","166534"),("Lost","FEE2E2","991B1B"),("Pending","FEF3C7","92400E")]:
-        cnt=len([c for c in calls if c.get("outcome","Pending")==ol]); rate=f"{cnt/max(len(calls),1)*100:.1f}%"
-        for ci,val in enumerate([ol,cnt,rate],1):
-            cell=ws.cell(row=row,column=ci,value=val); cell.fill=_f(bg)
-            cell.font=Font(bold=(ci==1),color=fg,size=10,name="Calibri")
-            cell.alignment=Alignment(horizontal="left" if ci==1 else "center",vertical="center"); cell.border=_b()
-        ws.row_dimensions[row].height=18; row+=1
-    row+=1
-    ws.merge_cells(f"A{row}:D{row}"); ws[f"A{row}"]="  Product Frequency"
-    ws[f"A{row}"].font=Font(bold=True,size=11,color="FFFFFF",name="Calibri"); ws[f"A{row}"].fill=_f(TEAL)
-    ws[f"A{row}"].alignment=Alignment(horizontal="left",vertical="center"); ws.row_dimensions[row].height=20; row+=1
-    for col_ltr,hdr in zip(["A","B"],["Product Name","Times Discussed"]):
-        cell=ws[f"{col_ltr}{row}"]; cell.value=hdr
-        cell.font=Font(bold=True,color="FFFFFF",size=10,name="Calibri"); cell.fill=_f("475569")
-        cell.alignment=Alignment(horizontal="center" if col_ltr=="B" else "left",vertical="center"); cell.border=_b()
-    ws.row_dimensions[row].height=18; row+=1
-    pc={}
-    for call in calls:
-        for p in call.get("products_discussed",[]): pc[p]=pc.get(p,0)+1
-    for p,cnt in sorted(pc.items(),key=lambda x:x[1],reverse=True):
-        ws[f"A{row}"].value=p; ws[f"A{row}"].font=Font(size=9,name="Calibri"); ws[f"A{row}"].fill=_f("F0F9FF"); ws[f"A{row}"].border=_b()
-        ws[f"B{row}"].value=cnt; ws[f"B{row}"].font=Font(bold=True,size=9,color=TEAL,name="Calibri"); ws[f"B{row}"].fill=_f("F0F9FF"); ws[f"B{row}"].alignment=Alignment(horizontal="center"); ws[f"B{row}"].border=_b()
-        ws.row_dimensions[row].height=16; row+=1
-    ws.column_dimensions["A"].width=38; ws.column_dimensions["B"].width=20; ws.column_dimensions["C"].width=16; ws.column_dimensions["D"].width=16
-
-def _create_product_sheet(wb, calls):
-    ws = wb.create_sheet("🛒 Product Analytics", 3)
-    ws.sheet_view.showGridLines = False
-    _section_title(ws,"A1","  🛒  Product Analytics & Correlation",merge_to="D1"); ws.row_dimensions[1].height=26
-    for ci,h in enumerate(["Product","Times Discussed","Avg Interest","Close Rate Estimate"],1):
-        cell=ws.cell(row=3,column=ci,value=h); _header_style(cell,bg=TEAL)
-    ws.row_dimensions[3].height=22
-    products=set()
-    for call in calls: products.update(call.get("products_discussed",[]))
-    row=4
-    for product in sorted(products):
-        pc=[c for c in calls if product in c.get("products_discussed",[])]
-        times=len(pc); avg=sum(c.get("interest_level",0) for c in pc)/max(times,1)
-        cr=len([c for c in pc if c.get("interest_level",0)>=4])/max(times,1)*100
-        bg="F0F9FF" if row%2==0 else "FFFFFF"
-        for ci,val in enumerate([product,times,round(avg,1),f"{cr:.0f}%"],1):
-            cell=ws.cell(row=row,column=ci,value=val); cell.font=Font(size=9,name="Calibri")
-            cell.fill=_f(bg); cell.alignment=Alignment(horizontal="left" if ci==1 else "center",vertical="center"); cell.border=_b()
-            if ci==4:
-                cb="DCFCE7" if cr>=60 else ("FEF3C7" if cr>=30 else "FEE2E2")
-                cf="166534" if cr>=60 else ("92400E" if cr>=30 else "991B1B")
-                cell.fill=_f(cb); cell.font=Font(bold=True,color=cf,size=9,name="Calibri")
-        ws.row_dimensions[row].height=18; row+=1
-    ws.column_dimensions["A"].width=38; ws.column_dimensions["B"].width=18; ws.column_dimensions["C"].width=26; ws.column_dimensions["D"].width=20
-
-def _create_action_items_sheet(wb, calls):
-    ws = wb.create_sheet("⚡ Action Items", 4)
-    ws.sheet_view.showGridLines = False
-    _section_title(ws,"A1","  ⚡  Upcoming & Overdue Follow-ups",merge_to="F1"); ws.row_dimensions[1].height=26
-    for ci,(h,w) in enumerate(zip(["Restaurant","Last Call Date","Contact","Next Steps","Days Until Due","Status"],[26,14,20,32,16,14]),1):
-        cell=ws.cell(row=3,column=ci,value=h); _header_style(cell,bg=TEAL); ws.column_dimensions[get_column_letter(ci)].width=w
-    ws.row_dimensions[3].height=22
-    rc={}
-    for call in calls: rc.setdefault(call.get("restaurant_name","Unknown"),[]).append(call)
-    for rest in rc: rc[rest]=sorted(rc[rest],key=lambda x:datetime.strptime(x.get("call_date","1900-01-01"),"%Y-%m-%d"),reverse=True)
-    today=datetime.now(); row=4
-    for rest,call_list in sorted(rc.items()):
-        if not call_list: continue
-        lc=call_list[0]; cd=datetime.strptime(lc.get("call_date",today.strftime("%Y-%m-%d")),"%Y-%m-%d")
-        due=(cd+timedelta(days=7)-today).days
-        status="OVERDUE" if due<0 else ("URGENT" if due<=2 else "PENDING")
-        sbg="FEE2E2" if status=="OVERDUE" else ("FEF3C7" if status=="URGENT" else "DCFCE7")
-        sfg="991B1B" if status=="OVERDUE" else ("92400E" if status=="URGENT" else "166534")
-        rb="F8FAFC" if row%2==0 else "FFFFFF"
-        for ci,val in enumerate([rest,lc.get("call_date","—"),lc.get("contact_name","—"),(lc.get("next_steps","") or "")[:60],max(0,due),status],1):
-            cell=ws.cell(row=row,column=ci,value=val); cell.border=_b()
-            cell.alignment=Alignment(wrap_text=True,vertical="center",horizontal="left" if ci in(1,3,4) else "center")
-            if ci==6: cell.fill=_f(sbg); cell.font=Font(bold=True,color=sfg,size=9,name="Calibri")
-            else: cell.fill=_f(rb); cell.font=Font(size=9,name="Calibri")
-        ws.row_dimensions[row].height=18; row+=1
-    ws.freeze_panes="A4"
+def export_call_notes_to_excel(call_notes_dir=None, lang: str = "EN", **kwargs) -> bytes:
+    """
+    Legacy entry point kept for backward compatibility.
+    Ignores call_notes_dir — reads from DB instead.
+    """
+    logger.warning(
+        "export_call_notes_to_excel() called with call_notes_dir — "
+        "ignoring JSON path, reading from database instead."
+    )
+    return export_visit_notes_to_excel(lang=lang, **kwargs)
