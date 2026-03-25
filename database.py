@@ -458,27 +458,6 @@ def get_all_restaurants_with_notes() -> list[str]:
         return []
 
 
-def get_all_call_notes_for_export() -> list[dict]:
-    """Return every call note across all restaurants, oldest first. Used for Excel export."""
-    try:
-        with _conn() as con:
-            rows = con.execute("SELECT * FROM call_notes ORDER BY saved_at ASC").fetchall()
-        result = []
-        for row in rows:
-            d = _row_to_dict(row)
-            d["products_discussed"] = _products_from_str(d.get("products_discussed", ""))
-            return_images = d.get("image_data", "") or ""
-            try:
-                d["images"] = json.loads(return_images) if return_images.strip().startswith("[") else []
-            except Exception:
-                d["images"] = []
-            result.append(d)
-        return result
-    except Exception as e:
-        logger.warning("get_all_call_notes_for_export failed: %s", e)
-        return []
-
-
 def save_call_note(restaurant_id: str, call: dict) -> int:
     return _save_call_note_raw(restaurant_id, call)
 

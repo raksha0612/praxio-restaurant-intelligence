@@ -108,45 +108,6 @@ def _safe_date(date_str: str) -> datetime:
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
-def export_from_db(all_calls: list) -> bytes:
-    """
-    Thin wrapper called by app.py: takes a pre-fetched list of call-note dicts
-    (from get_all_call_notes_for_export) and builds the Excel workbook.
-
-    Normalises field names so the sheet builders get what they expect:
-    _restaurant_name, visit_date, images list, etc.
-    """
-    normalised = []
-    for call in all_calls:
-        c = dict(call)
-        rid = c.get("restaurant_id", "")
-        c.setdefault("_restaurant_id",   rid)
-        c.setdefault("_restaurant_name", rid.replace("_", " ").title())
-        c.setdefault("visit_date", c.get("call_date", ""))
-        # images may already be parsed by get_all_call_notes_for_export
-        if "images" not in c:
-            raw = c.get("image_data", "") or ""
-            try:
-                c["images"] = json.loads(raw) if raw.strip().startswith("[") else []
-            except Exception:
-                c["images"] = []
-        normalised.append(c)
-
-    normalised.sort(key=lambda x: _safe_date(x.get("visit_date", "")), reverse=True)
-
-    wb = Workbook()
-    wb.remove(wb.active)
-    _sheet_visit_notes(wb, normalised, "EN")
-    _sheet_kpis(wb, normalised, "EN")
-    _sheet_action_items(wb, normalised, "EN")
-    _sheet_images(wb, normalised, "EN")
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
-
-
 def export_visit_notes_to_excel(
     lang: str = "EN",
     df_rest=None,

@@ -9,8 +9,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       APP_PASSWORD: ${APP_PASSWORD}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-4-6}
-      RESTAURANTS_SHEET_URL: ${RESTAURANTS_SHEET_URL}
-      REVIEWS_SHEET_URL: ${REVIEWS_SHEET_URL}
     volumes:
       # Live reload — code changes reflect instantly without rebuild
       - .:/app
