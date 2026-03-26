@@ -402,22 +402,41 @@ for key, default in [
         st.session_state[key] = default
 
 
+def _load_city_urls() -> dict:
+    """Load Google Sheets URLs from environment variables.
+
+    Each city requires two environment variables:
+    - {CITY}_REST_SHEET_URL: URL to restaurants sheet
+    - {CITY}_REV_SHEET_URL: URL to reviews sheet
+
+    Returns a dict mapping city names to {rest, rev} URL pairs.
+    Raises ValueError if no valid city URLs are found.
+    """
+    cities = {}
+    for city in ["Frankfurt", "Hamburg", "Wedel"]:
+        rest_url = os.environ.get(f"{city.upper()}_REST_SHEET_URL")
+        rev_url = os.environ.get(f"{city.upper()}_REV_SHEET_URL")
+
+        if not rest_url or not rev_url:
+            logger.warning(f"Missing Sheet URLs for {city} — skipping (set {city.upper()}_REST_SHEET_URL and {city.upper()}_REV_SHEET_URL in .env)")
+            continue
+
+        cities[city] = {"rest": rest_url, "rev": rev_url}
+
+    if not cities:
+        raise ValueError(
+            "No valid city URLs found in environment variables. "
+            "Please set FRANKFURT_REST_SHEET_URL, FRANKFURT_REV_SHEET_URL, "
+            "HAMBURG_REST_SHEET_URL, HAMBURG_REV_SHEET_URL, "
+            "WEDEL_REST_SHEET_URL, WEDEL_REV_SHEET_URL in .env"
+        )
+
+    return cities
+
+
 @st.cache_data(show_spinner=False)
 def load_google_data():
-    CITIES = {
-        "Frankfurt": {
-            "rest": "https://docs.google.com/spreadsheets/d/1GzZWRuPr4y3yscDZYprWZtdgZ6Z6MkPBHwRTLH4bPR8/edit?usp=sharing",
-            "rev":  "https://docs.google.com/spreadsheets/d/1zSAd91SkuYgXuIOQa5WVJneEV5dmPyM9XMnI66iNGb4/edit?usp=sharing",
-        },
-        "Hamburg": {
-            "rest": "https://docs.google.com/spreadsheets/d/1W1NmB1wAYh4qJ_tsx6VC2NLthTLSFtliGJYZdK9EaOA/edit?usp=drive_link",
-            "rev":  "https://docs.google.com/spreadsheets/d/1HU7hEmKBTn5u42MPDEawdrNDxp7sZZXN13lxACDzSd8/edit?usp=drive_link",
-        },
-        "Wedel": {
-            "rest": "https://docs.google.com/spreadsheets/d/1iOZiX0xy9tZqs5SEOC_7BN5OhKsMMeCdsHJKDZgOQeI/edit?usp=drive_link",
-            "rev":  "https://docs.google.com/spreadsheets/d/15MeEt3uZsBLyCqIHqwkzomOXNS22WyaTA2OIU53i89I/edit?usp=drive_link",
-        },
-    }
+    CITIES = _load_city_urls()
     all_rest, all_rev = [], []
     for city_name, urls in CITIES.items():
         try:

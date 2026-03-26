@@ -9,6 +9,13 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       APP_PASSWORD: ${APP_PASSWORD}
       CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-4-6}
+      # Google Sheets URLs (cities: Frankfurt, Hamburg, Wedel)
+      FRANKFURT_REST_SHEET_URL: ${FRANKFURT_REST_SHEET_URL}
+      FRANKFURT_REV_SHEET_URL: ${FRANKFURT_REV_SHEET_URL}
+      HAMBURG_REST_SHEET_URL: ${HAMBURG_REST_SHEET_URL}
+      HAMBURG_REV_SHEET_URL: ${HAMBURG_REV_SHEET_URL}
+      WEDEL_REST_SHEET_URL: ${WEDEL_REST_SHEET_URL}
+      WEDEL_REV_SHEET_URL: ${WEDEL_REV_SHEET_URL}
     volumes:
       # Live reload — code changes reflect instantly without rebuild
       - .:/app
